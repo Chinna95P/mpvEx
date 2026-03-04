@@ -52,6 +52,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import app.marlboroadvance.mpvex.domain.anicli.AniCliAnime
 import app.marlboroadvance.mpvex.domain.network.NetworkConnection
 import app.marlboroadvance.mpvex.presentation.Screen
 import app.marlboroadvance.mpvex.ui.browser.components.BrowserTopBar
@@ -76,9 +77,12 @@ object NetworkStreamingScreen : Screen {
     val context = LocalContext.current
     val viewModel: NetworkStreamingViewModel =
       viewModel(factory = NetworkStreamingViewModel.factory(context.applicationContext as android.app.Application))
+    val aniCliViewModel: AniCliViewModel =
+      viewModel(factory = AniCliViewModel.factory(context.applicationContext as android.app.Application))
 
     val connections by viewModel.connections.collectAsState()
     val connectionStatuses by viewModel.connectionStatuses.collectAsState()
+    val aniCliState by aniCliViewModel.state.collectAsState()
     val browserPreferences = koinInject<app.marlboroadvance.mpvex.preferences.BrowserPreferences>()
     var showAddSheet by remember { mutableStateOf(false) }
     var editingConnection by remember { mutableStateOf<NetworkConnection?>(null) }
@@ -152,6 +156,19 @@ object NetworkStreamingScreen : Screen {
         }
       },
     ) { padding ->
+      // AniCli stream quality sheet — must live OUTSIDE LazyColumn
+      // (ModalBottomSheet won't render if it's a lazy item that isn't visible)
+      if (aniCliState.showStreamSheet) {
+        AniCliStreamSheet(
+          epNo = aniCliState.selectedEpisode ?: "",
+          animeName = aniCliState.selectedAnime?.name ?: "",
+          isLoading = aniCliState.isLoadingStreams,
+          links = aniCliState.streamLinks,
+          onDismiss = aniCliViewModel::dismissStreamSheet,
+          onPlay = { url, title -> MediaUtils.playFile(url, context, "ani_cli", title) },
+        )
+      }
+
       LazyColumn(
         state = listState,
         modifier = Modifier
@@ -164,8 +181,19 @@ object NetworkStreamingScreen : Screen {
           bottom = navigationBarHeight
         ),
       ) {
-          // Section 1: Stream Link
+          // Section 1: Anime (ani-cli)
+          aniCliSection(
+            uiState = aniCliState,
+            onQueryChange = aniCliViewModel::updateQuery,
+            onSearch = aniCliViewModel::search,
+            onToggleMode = aniCliViewModel::toggleMode,
+            onSelectAnime = aniCliViewModel::selectAnime,
+            onSelectEpisode = aniCliViewModel::selectEpisode,
+          )
+
+          // Section 2: Stream Link
           item {
+            Spacer(modifier = Modifier.height(24.dp))
             StreamLinkSection(
               onPlayLink = { url ->
                 MediaUtils.playFile(url, context, "network_stream")
@@ -173,7 +201,7 @@ object NetworkStreamingScreen : Screen {
             )
           }
 
-          // Section 2: Local Network header
+          // Section 3: Local Network header
           item {
             Spacer(modifier = Modifier.height(24.dp))
             Text(
