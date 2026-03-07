@@ -1,5 +1,8 @@
 package app.marlboroadvance.mpvex.ui.player.controls.components.sheets
 
+import app.marlboroadvance.mpvex.ui.icons.Icon
+import app.marlboroadvance.mpvex.ui.icons.Icons
+
 import android.text.format.DateUtils
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
@@ -16,9 +19,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -410,6 +410,33 @@ fun TimePickerDialog(
   }
   }
 
+@Composable
+fun SectionHeaderWithInfo(
+  title: String,
+  onInfoClick: () -> Unit,
+  modifier: Modifier = Modifier
+) {
+  Row(
+    modifier = modifier.fillMaxWidth(),
+    horizontalArrangement = Arrangement.Start,
+    verticalAlignment = Alignment.CenterVertically
+  ) {
+    Text(
+      text = title,
+      style = MaterialTheme.typography.titleMedium,
+      color = MaterialTheme.colorScheme.primary
+    )
+    Spacer(modifier = Modifier.width(8.dp))
+    IconButton(onClick = onInfoClick, modifier = Modifier.size(24.dp)) {
+      Icon(
+        imageVector = Icons.Outlined.Info,
+        contentDescription = "Info",
+        tint = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.size(16.dp)
+      )
+    }
+  }
+}
 
 
 

@@ -1,5 +1,8 @@
 package app.marlboroadvance.mpvex.ui.preferences
 
+import app.marlboroadvance.mpvex.ui.icons.Icon
+import app.marlboroadvance.mpvex.ui.icons.Icons
+
 import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,9 +15,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -173,7 +173,7 @@ data class ConfigEditorScreen(
         navigationIcon = {
           IconButton(onClick = backStack::removeLastOrNull) {
             Icon(
-              Icons.AutoMirrored.Default.ArrowBack,
+              Icons.Default.ArrowBack,
               contentDescription = "Back",
               tint = MaterialTheme.colorScheme.secondary,
             )
@@ -194,7 +194,7 @@ data class ConfigEditorScreen(
             ),
             shape = RoundedCornerShape(8.dp),
           ) {
-            Icon(Icons.Default.Check, contentDescription = "Save")
+            Icon(Icons.Default.CheckCircle, contentDescription = "Save")
           }
         },
       )
@@ -225,3 +225,6 @@ data class ConfigEditorScreen(
     }
   }
 }
+
+
+
