@@ -406,12 +406,19 @@ private fun IconsLegend() {
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Header
-            Text(
-                text = "Icons Legend",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
+            androidx.compose.foundation.layout.Column {
+                Text(
+                    text = "Icons Legend",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = "What is each icon for?",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             // FlowRow grid of icons
             FlowRow(

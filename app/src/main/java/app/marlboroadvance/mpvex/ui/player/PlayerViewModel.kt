@@ -328,7 +328,6 @@ class PlayerViewModel(
   val isVerticalFlipped: StateFlow<Boolean> = _isVerticalFlipped.asStateFlow()
 
   // ==================== Ambience Mode ======================================
-  // Added Ambient Mode Persistant saved state call by @Chinna95P
   private val _isAmbientEnabled = MutableStateFlow(playerPreferences.isAmbientEnabled.get())
   val isAmbientEnabled: StateFlow<Boolean> = _isAmbientEnabled.asStateFlow()
 
@@ -2192,8 +2191,6 @@ class PlayerViewModel(
 
   fun toggleAmbientMode() {
     _isAmbientEnabled.value = !_isAmbientEnabled.value
-
-    // Save the Ambient Mode ON/OFF state permanently to preferences added by @Chinna95P
     playerPreferences.isAmbientEnabled.set(_isAmbientEnabled.value)
     if (_isAmbientEnabled.value) {
       lastAmbientScaleX = -1.0 // Force rewrite
@@ -2237,11 +2234,6 @@ class PlayerViewModel(
   /** Resets ambient mode to OFF when a new video file is loaded. */
   fun resetAmbientMode() {
     if (!_isAmbientEnabled.value) return
-    
-    // Ambient Mode Persistent Fix for Next/Previous files by @Chinna95P
-    // DO NOT set _isAmbientEnabled.value = false
-    // Just temporarily remove the old shader and reset the scale 
-    // so the new video starts with a clean slate before recalculating.
     disableAmbientShader()
     lastAmbientScaleX = -1.0
     lastAmbientScaleY = -1.0
