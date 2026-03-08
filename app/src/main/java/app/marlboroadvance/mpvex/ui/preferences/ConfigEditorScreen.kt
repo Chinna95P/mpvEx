@@ -194,7 +194,7 @@ data class ConfigEditorScreen(
             ),
             shape = RoundedCornerShape(8.dp),
           ) {
-            Icon(Icons.Default.CheckCircle, contentDescription = "Save")
+            Icon(Icons.Filled.CheckCircle, contentDescription = "Save")
           }
         },
       )

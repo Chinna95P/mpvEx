@@ -357,6 +357,7 @@ class PlayerActivity :
       intent.getParcelableArrayListExtra("playlist") ?: emptyList()
     }
 
+
     // If playlist is empty but playlist_id is provided, load asynchronously from database
     // Load all items - LazyColumn handles pagination/virtualization efficiently
     if (playlist.isEmpty() && playlistId != null) {
@@ -1494,6 +1495,8 @@ class PlayerActivity :
 
   /**
    * Gets the display title for a playlist item URI.
+   * If [playlistTitles] has a title at the matching index, that is returned
+   * so callers (e.g. AniCli) can provide proper episode names.
    *
    * @param uri The URI to get the title for
    * @return The display name/title of the file

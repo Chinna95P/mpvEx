@@ -51,6 +51,7 @@ object MediaUtils {
     source: Any,
     context: Context,
     launchSource: String? = null,
+    title: String? = null,
   ) {
     val uri =
       when (source) {
@@ -64,6 +65,9 @@ object MediaUtils {
           if (launchSource != null && (launchSource.contains("playlist") || launchSource == "m3u_playlist")) {
             intent.putExtra("title", source.displayName)
           }
+          
+          // If an explicit title was provided, use it
+          title?.let { intent.putExtra("title", it) }
           
           context.startActivity(intent)
           return
@@ -99,6 +103,7 @@ object MediaUtils {
     intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
     intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     launchSource?.let { intent.putExtra("launch_source", it) }
+    title?.let { intent.putExtra("title", it) }
     context.startActivity(intent)
   }
 
