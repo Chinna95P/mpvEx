@@ -17,6 +17,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,7 +49,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import me.zhanghai.compose.preference.ListPreference
-import me.zhanghai.compose.preference.Preference
 import me.zhanghai.compose.preference.ProvidePreferenceLocals
 import me.zhanghai.compose.preference.SliderPreference
 import me.zhanghai.compose.preference.SwitchPreference
@@ -72,7 +72,28 @@ object AppearancePreferencesScreen : Screen {
         val darkMode by preferences.darkMode.collectAsState()
         val appTheme by preferences.appTheme.collectAsState()
         var pendingThumbnailMode by remember { mutableStateOf<ThumbnailMode?>(null) }
-        var isClearThumbnailCacheConfirmShown by remember { mutableStateOf(false) }
+        val storedThumbnailMode by browserPreferences.thumbnailMode.collectAsState()
+        val thumbnailFramePosition by browserPreferences.thumbnailFramePosition.collectAsState()
+
+        LaunchedEffect(storedThumbnailMode) {
+            when (storedThumbnailMode) {
+                ThumbnailMode.OneThird -> {
+                    browserPreferences.thumbnailFramePosition.set(33f)
+                    browserPreferences.thumbnailMode.set(ThumbnailMode.FrameAtPosition)
+                }
+                ThumbnailMode.Halfway -> {
+                    browserPreferences.thumbnailFramePosition.set(50f)
+                    browserPreferences.thumbnailMode.set(ThumbnailMode.FrameAtPosition)
+                }
+                else -> Unit
+            }
+        }
+
+        val thumbnailMode =
+            when (storedThumbnailMode) {
+                ThumbnailMode.OneThird, ThumbnailMode.Halfway -> ThumbnailMode.FrameAtPosition
+                else -> storedThumbnailMode
+            }
 
         // Determine if we're in dark mode for theme preview
         val isDarkMode = when (darkMode) {
@@ -117,41 +138,6 @@ object AppearancePreferencesScreen : Screen {
                     }
                 },
                 onCancel = { pendingThumbnailMode = null },
-            )
-        }
-
-        if (isClearThumbnailCacheConfirmShown) {
-            ConfirmDialog(
-                title = stringResource(R.string.pref_clear_thumbnail_cache_title),
-                subtitle = stringResource(R.string.pref_clear_thumbnail_cache_summary),
-                onConfirm = {
-                    isClearThumbnailCacheConfirmShown = false
-                    scope.launch {
-                        val result = withContext(Dispatchers.IO) {
-                            runCatching { thumbnailRepository.clearThumbnailCache() }
-                        }
-                        result
-                            .onSuccess {
-                                Toast
-                                    .makeText(
-                                        context,
-                                        context.getString(R.string.pref_thumbnail_cache_cleared),
-                                        Toast.LENGTH_SHORT,
-                                    ).show()
-                            }.onFailure { error ->
-                                Toast
-                                    .makeText(
-                                        context,
-                                        context.getString(
-                                            R.string.pref_thumbnail_cache_clear_failed,
-                                            error.message ?: "Unknown error",
-                                        ),
-                                        Toast.LENGTH_LONG,
-                                    ).show()
-                            }
-                    }
-                },
-                onCancel = { isClearThumbnailCacheConfirmShown = false },
             )
         }
 
@@ -376,7 +362,6 @@ object AppearancePreferencesScreen : Screen {
 
                             PreferenceDivider()
 
-                            val thumbnailMode by browserPreferences.thumbnailMode.collectAsState()
                             ListPreference(
                                 value = thumbnailMode,
                                 onValueChange = { newMode ->
@@ -384,17 +369,47 @@ object AppearancePreferencesScreen : Screen {
                                         pendingThumbnailMode = newMode
                                     }
                                 },
-                                values = ThumbnailMode.entries,
+                                values = ThumbnailMode.entries.filter { it.isSelectable },
                                 valueToText = { AnnotatedString(it.displayName) },
                                 title = { Text(text = stringResource(id = R.string.pref_appearance_thumbnail_generation_title)) },
                                 summary = {
                                     Text(
-                                        text = thumbnailMode.displayName,
+                                        text = when (thumbnailMode) {
+                                            ThumbnailMode.FrameAtPosition ->
+                                                "${thumbnailMode.displayName} (${thumbnailFramePosition.roundToInt()}%)"
+                                            else -> thumbnailMode.displayName
+                                        },
                                         color = MaterialTheme.colorScheme.outline,
                                     )
                                 },
                                 enabled = showVideoThumbnails,
                             )
+
+                            if (thumbnailMode == ThumbnailMode.FrameAtPosition) {
+                                PreferenceDivider()
+
+                                SliderPreference(
+                                    value = thumbnailFramePosition,
+                                    onValueChange = { browserPreferences.thumbnailFramePosition.set(it) },
+                                    sliderValue = thumbnailFramePosition,
+                                    onSliderValueChange = { browserPreferences.thumbnailFramePosition.set(it) },
+                                    title = {
+                                        Text(text = stringResource(id = R.string.pref_appearance_thumbnail_position_title))
+                                    },
+                                    valueRange = 0f..100f,
+                                    valueSteps = 99,
+                                    summary = {
+                                        Text(
+                                            text = stringResource(
+                                                id = R.string.pref_appearance_thumbnail_position_summary,
+                                                thumbnailFramePosition.roundToInt(),
+                                            ),
+                                            color = MaterialTheme.colorScheme.outline,
+                                        )
+                                    },
+                                    enabled = showVideoThumbnails,
+                                )
+                            }
 
                             PreferenceDivider()
 
@@ -434,19 +449,6 @@ object AppearancePreferencesScreen : Screen {
                                     )
                                 },
                                 enabled = showVideoThumbnails,
-                            )
-
-                            PreferenceDivider()
-
-                            Preference(
-                                title = { Text(text = stringResource(id = R.string.pref_clear_thumbnail_cache_title)) },
-                                summary = {
-                                    Text(
-                                        text = stringResource(id = R.string.pref_clear_thumbnail_cache_summary),
-                                        color = MaterialTheme.colorScheme.outline,
-                                    )
-                                },
-                                onClick = { isClearThumbnailCacheConfirmShown = true },
                             )
                         }
                     }

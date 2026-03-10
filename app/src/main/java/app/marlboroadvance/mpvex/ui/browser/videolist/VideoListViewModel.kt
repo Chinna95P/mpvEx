@@ -92,39 +92,39 @@ class VideoListViewModel(
 
     // Listen for global media library changes and refresh this list when they occur
     viewModelScope.launch(Dispatchers.IO) {
-      MediaLibraryEvents.changes.collectLatest {
-        // Clear cache when media library changes
-        MediaFileRepository.clearCache()
-        loadVideos()
+        MediaLibraryEvents.changes.collectLatest {
+          // Clear cache when media library changes
+          MediaFileRepository.clearCache()
+          loadVideos()
+        }
       }
-    }
   }
 
   override fun refresh() {
     Log.d(tag, "Hard refreshing video list for bucket: $bucketId")
-    
+
     // Set loading state
     _isLoading.value = true
-    
+
     // Clear cache to force fresh data from filesystem
     MediaFileRepository.clearCache()
     FolderViewScanner.clearCache()
-    
+
     // Trigger media scan before loading to ensure MediaStore is up-to-date
     triggerMediaScan()
-    
-    // Wait a bit for MediaStore to update, then reload
-    viewModelScope.launch(Dispatchers.IO) {
-      delay(1500) // Give MediaStore time to index
-      loadVideos()
-    }
+
+    loadVideos(forceFileSystemCheck = true)
   }
 
-  private fun loadVideos() {
+  private fun loadVideos(forceFileSystemCheck: Boolean = false) {
     viewModelScope.launch(Dispatchers.IO) {
       try {
         // First attempt to load videos (basic info from MediaStore)
-        var videoList = MediaFileRepository.getVideosInFolder(getApplication(), bucketId)
+        var videoList = MediaFileRepository.getVideosInFolder(
+          getApplication(),
+          bucketId,
+          forceFileSystemCheck = forceFileSystemCheck,
+        )
 
         // Enrich with metadata only if chips are enabled
         if (MetadataRetrieval.isVideoMetadataNeeded(browserPreferences)) {
@@ -155,7 +155,11 @@ class VideoListViewModel(
           Log.d(tag, "No videos found for bucket $bucketId - attempting media rescan")
           triggerMediaScan()
           delay(1000)
-          var retryVideoList = MediaFileRepository.getVideosInFolder(getApplication(), bucketId)
+          var retryVideoList = MediaFileRepository.getVideosInFolder(
+            getApplication(),
+            bucketId,
+            forceFileSystemCheck = true,
+          )
 
           // Enrich retry list if needed
           if (MetadataRetrieval.isVideoMetadataNeeded(browserPreferences)) {

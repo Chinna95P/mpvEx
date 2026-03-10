@@ -140,12 +140,12 @@ class FileSystemBrowserViewModel(
     // Refresh on global media library changes
     // Similar to Fossify's media scan completion listener
     viewModelScope.launch(Dispatchers.IO) {
-      MediaLibraryEvents.changes.collectLatest {
-        // Clear cache when media library changes
-        MediaFileRepository.clearCache()
-        loadCurrentDirectory()
+        MediaLibraryEvents.changes.collectLatest {
+          // Clear cache when media library changes
+          MediaFileRepository.clearCache()
+          loadCurrentDirectory()
+        }
       }
-    }
 
     // Apply sorting whenever items or sort preferences change
     // Based on Fossify's ChangeSortingDialog callback and sorting logic
@@ -170,23 +170,19 @@ class FileSystemBrowserViewModel(
    */
   override fun refresh() {
     Log.d(TAG, "Hard refreshing current directory: ${_currentPath.value}")
-    
+
     // Set loading state
     _isLoading.value = true
-    
+
     // Clear all caches to force fresh data from filesystem
     MediaFileRepository.clearCache()
     FolderViewScanner.clearCache()
     TreeViewScanner.clearCache()
-    
+
     // Trigger media scan to ensure MediaStore is up-to-date
     triggerMediaScan()
-    
-    // Wait for MediaStore to update, then reload
-    viewModelScope.launch(Dispatchers.IO) {
-      delay(1500) // Give MediaStore time to index
-      loadCurrentDirectory()
-    }
+
+    loadCurrentDirectory(forceFileSystemCheck = true)
   }
   
   /**
@@ -319,7 +315,7 @@ class FileSystemBrowserViewModel(
    * Load current directory contents
    * Main loading logic based on Fossify's getItems() and getRegularItemsOf()
    */
-  private fun loadCurrentDirectory() {
+  private fun loadCurrentDirectory(forceFileSystemCheck: Boolean = false) {
     viewModelScope.launch(Dispatchers.IO) {
       _isLoading.value = true
       _error.value = null
@@ -333,7 +329,7 @@ class FileSystemBrowserViewModel(
         if (path == STORAGE_ROOTS_MARKER) {
           Log.d(TAG, "Loading storage roots")
           _breadcrumbs.value = emptyList()
-          val roots = MediaFileRepository.getStorageRoots(getApplication())
+          val roots = MediaFileRepository.getStorageRoots(getApplication(), forceFileSystemCheck)
           _unsortedItems.value = roots
           Log.d(TAG, "Loaded ${roots.size} storage roots")
         } else {
@@ -346,7 +342,12 @@ class FileSystemBrowserViewModel(
           // Scan directory - equivalent to Fossify's getRegularItemsOf()
           // Always show only videos (showAllFileTypes = false)
           MediaFileRepository
-            .scanDirectory(getApplication(), path, showAllFileTypes = false)
+            .scanDirectory(
+              getApplication(),
+              path,
+              showAllFileTypes = false,
+              forceFileSystemCheck = forceFileSystemCheck,
+            )
             .onSuccess { items ->
               // Get previous count for this path
               val previousCount = itemCountByPath[path] ?: 0

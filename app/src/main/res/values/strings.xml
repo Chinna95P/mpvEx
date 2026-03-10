@@ -34,9 +34,11 @@
   <string name="pref_appearance_show_video_thumbnails_title">Show video thumbnails</string>
   <string name="pref_appearance_show_video_thumbnails_summary">Display generated thumbnails in video lists and folders</string>
   <string name="pref_appearance_thumbnail_generation_title">Thumbnail generation strategy</string>
-  <string name="pref_appearance_thumbnail_generation_summary">Choose which frame is used when thumbnails are generated</string>
+  <string name="pref_appearance_thumbnail_generation_summary">Choose how thumbnails are generated, including embedded artwork or a specific frame position</string>
   <string name="pref_appearance_thumbnail_generation_change_title">Change thumbnail strategy?</string>
   <string name="pref_appearance_thumbnail_generation_change_summary">This will clear cached thumbnails. New thumbnails will be generated with the selected strategy as you browse.</string>
+  <string name="pref_appearance_thumbnail_position_title">Thumbnail frame position</string>
+  <string name="pref_appearance_thumbnail_position_summary">Capture the frame at %1$d%% of the video</string>
   <string name="pref_appearance_show_network_thumbnails_title">Show network thumbnails (Experimental)</string>
   <string name="pref_appearance_show_network_thumbnails_summary">Generate thumbnails for network streams (May increase data usage on mobile networks)</string>
   <string name="pref_appearance_theme_picker_label">App Theme</string>

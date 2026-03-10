@@ -64,13 +64,14 @@ object FolderViewScanner {
      */
     suspend fun getAllVideoFolders(
         context: Context,
-        options: MediaScanOptions = MediaScanOptions()
+        options: MediaScanOptions = MediaScanOptions(),
+        forceFileSystemCheck: Boolean = false,
     ): List<VideoFolder> = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         
         // Return cached data if still valid
         cachedFolderList?.let { cached ->
-            if (now - cacheTimestamp < CACHE_TTL_MS && cacheOptionsKey == options.cacheKey) {
+            if (!forceFileSystemCheck && now - cacheTimestamp < CACHE_TTL_MS && cacheOptionsKey == options.cacheKey) {
                 return@withContext cached
             }
         }
@@ -83,7 +84,7 @@ object FolderViewScanner {
         scanMediaStoreImmediateChildren(context, allFolders, noMediaPathFilter)
         
         // Step 2: Scan filesystem for folders that MediaStore won't expose.
-        scanFileSystemRoots(context, allFolders, options, noMediaPathFilter)
+        scanFileSystemRoots(context, allFolders, options, noMediaPathFilter, forceFileSystemCheck)
         
         // Convert to VideoFolder list
         val result = allFolders.values.map { data ->
@@ -198,12 +199,13 @@ object FolderViewScanner {
         context: Context,
         folders: MutableMap<String, FolderData>,
         options: MediaScanOptions,
-        noMediaPathFilter: NoMediaPathFilter
+        noMediaPathFilter: NoMediaPathFilter,
+        forceFileSystemCheck: Boolean,
     ) {
         try {
             val rootsToScan = linkedSetOf<File>()
 
-            if (options.includeNoMediaFolders) {
+            if (shouldIncludePrimaryStorageInFilesystemFolderScan(options, forceFileSystemCheck)) {
                 rootsToScan += Environment.getExternalStorageDirectory()
             }
 

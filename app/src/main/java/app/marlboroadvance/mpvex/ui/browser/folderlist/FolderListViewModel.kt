@@ -258,22 +258,18 @@ class FolderListViewModel(
 
   override fun refresh() {
     Log.d(TAG, "Hard refreshing folder list")
-    
+
     // Set loading state
     _isLoading.value = true
-    
+
     // Clear all caches to force fresh data from filesystem
     MediaFileRepository.clearCache()
     FolderViewScanner.clearCache()
-    
+
     // Trigger media scan to ensure MediaStore is up-to-date
     triggerMediaScan()
-    
-    // Wait for MediaStore to update, then reload
-    viewModelScope.launch(Dispatchers.IO) {
-      kotlinx.coroutines.delay(1500) // Give MediaStore time to index
-      loadVideoFolders()
-    }
+
+    loadVideoFolders(forceFileSystemCheck = true)
   }
   
   /**
@@ -312,7 +308,7 @@ class FolderListViewModel(
    * Uses optimized parallel scanning with complete metadata (including duration)
    * to provide fast, non-flickering results.
    */
-  private fun loadVideoFolders() {
+  private fun loadVideoFolders(forceFileSystemCheck: Boolean = false) {
     // Cancel any previous scan to prevent concurrent execution
     currentScanJob?.cancel()
     
@@ -338,7 +334,8 @@ class FolderListViewModel(
               if (!hasExistingData) {
                 _scanStatus.value = "Found $count folders..."
               }
-            }
+            },
+            forceFileSystemCheck = forceFileSystemCheck,
           )
 
         Log.d(TAG, "Fast scan completed: found ${fastFolders.size} folders")

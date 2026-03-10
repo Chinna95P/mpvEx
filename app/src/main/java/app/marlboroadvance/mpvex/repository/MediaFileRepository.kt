@@ -65,11 +65,12 @@ object MediaFileRepository : KoinComponent {
    * Scans all storage volumes to find all folders containing videos
    */
   suspend fun getAllVideoFolders(
-    context: Context
+    context: Context,
+    forceFileSystemCheck: Boolean = false,
   ): List<VideoFolder> =
     withContext(Dispatchers.IO) {
       try {
-        FolderViewScanner.getAllVideoFolders(context, currentScanOptions())
+        FolderViewScanner.getAllVideoFolders(context, currentScanOptions(), forceFileSystemCheck)
       } catch (e: Exception) {
         Log.e(TAG, "Error scanning for video folders", e)
         emptyList()
@@ -83,7 +84,8 @@ object MediaFileRepository : KoinComponent {
   suspend fun getAllVideoFoldersFast(
     context: Context,
     onProgress: ((Int) -> Unit)? = null,
-  ): List<VideoFolder> = getAllVideoFolders(context)
+    forceFileSystemCheck: Boolean = false,
+  ): List<VideoFolder> = getAllVideoFolders(context, forceFileSystemCheck)
 
   /**
    * No-op enrichment - MediaStore already provides all metadata
@@ -105,11 +107,12 @@ object MediaFileRepository : KoinComponent {
    */
   suspend fun getVideosInFolder(
     context: Context,
-    bucketId: String
+    bucketId: String,
+    forceFileSystemCheck: Boolean = false,
   ): List<Video> =
     withContext(Dispatchers.IO) {
       try {
-        VideoScanUtils.getVideosInFolder(context, bucketId, currentScanOptions())
+        VideoScanUtils.getVideosInFolder(context, bucketId, currentScanOptions(), forceFileSystemCheck)
       } catch (e: Exception) {
         Log.e(TAG, "Error getting videos for bucket $bucketId", e)
         emptyList()
@@ -315,6 +318,7 @@ object MediaFileRepository : KoinComponent {
     path: String,
     showAllFileTypes: Boolean = false,
     useFastCount: Boolean = false,
+    forceFileSystemCheck: Boolean = false,
   ): Result<List<FileSystemItem>> =
     withContext(Dispatchers.IO) {
       try {
@@ -337,7 +341,7 @@ object MediaFileRepository : KoinComponent {
 
         // Get folders using TreeViewScanner (instant from cache)
         val scanOptions = currentScanOptions()
-        val folders = TreeViewScanner.getFoldersInDirectory(context, path, scanOptions)
+        val folders = TreeViewScanner.getFoldersInDirectory(context, path, scanOptions, forceFileSystemCheck)
         folders.forEach { folderData ->
           items.add(
             FileSystemItem.Folder(
@@ -353,7 +357,7 @@ object MediaFileRepository : KoinComponent {
         }
 
         // Get videos in current directory
-        val videos = VideoScanUtils.getVideosInFolder(context, path, scanOptions)
+        val videos = VideoScanUtils.getVideosInFolder(context, path, scanOptions, forceFileSystemCheck)
         videos.forEach { video ->
           items.add(
             FileSystemItem.VideoFile(
@@ -378,7 +382,10 @@ object MediaFileRepository : KoinComponent {
   /**
    * Gets all storage volume roots with recursive video counts
    */
-  suspend fun getStorageRoots(context: Context): List<FileSystemItem.Folder> =
+  suspend fun getStorageRoots(
+    context: Context,
+    forceFileSystemCheck: Boolean = false,
+  ): List<FileSystemItem.Folder> =
     withContext(Dispatchers.IO) {
       val roots = mutableListOf<FileSystemItem.Folder>()
 
@@ -389,7 +396,12 @@ object MediaFileRepository : KoinComponent {
           val primaryPath = primaryStorage.absolutePath
           
           // Get recursive count for this storage root
-          val folderData = TreeViewScanner.getFolderDataRecursive(context, primaryPath, currentScanOptions())
+          val folderData = TreeViewScanner.getFolderDataRecursive(
+            context,
+            primaryPath,
+            currentScanOptions(),
+            forceFileSystemCheck,
+          )
           
           roots.add(
             FileSystemItem.Folder(
@@ -414,7 +426,12 @@ object MediaFileRepository : KoinComponent {
               val volumeName = volume.getDescription(context)
               
               // Get recursive count for this storage root
-              val folderData = TreeViewScanner.getFolderDataRecursive(context, volumePath, currentScanOptions())
+              val folderData = TreeViewScanner.getFolderDataRecursive(
+                context,
+                volumePath,
+                currentScanOptions(),
+                forceFileSystemCheck,
+              )
               
               roots.add(
                 FileSystemItem.Folder(

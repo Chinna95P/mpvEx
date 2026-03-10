@@ -83,7 +83,7 @@ object SearchablePreferences {
             add(SearchablePreference(
                 titleRes = R.string.pref_appearance_thumbnail_generation_title,
                 summaryRes = R.string.pref_appearance_thumbnail_generation_summary,
-                keywords = listOf("thumbnail", "generation", "frame", "hybrid", "first frame", "preview"),
+                keywords = listOf("thumbnail", "generation", "frame", "hybrid", "first frame", "embedded", "slider", "percentage", "preview"),
                 category = "Appearance",
                 screen = AppearancePreferencesScreen,
             ))

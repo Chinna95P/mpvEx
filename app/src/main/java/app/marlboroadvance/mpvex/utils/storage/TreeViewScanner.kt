@@ -64,9 +64,10 @@ object TreeViewScanner {
     suspend fun getFoldersInDirectory(
         context: Context,
         parentPath: String,
-        options: MediaScanOptions = MediaScanOptions()
+        options: MediaScanOptions = MediaScanOptions(),
+        forceFileSystemCheck: Boolean = false,
     ): List<FolderData> = withContext(Dispatchers.IO) {
-        val allFolders = getOrBuildTreeViewData(context, options)
+        val allFolders = getOrBuildTreeViewData(context, options, forceFileSystemCheck)
         
         // Filter for direct children only
         allFolders.values.filter { folder ->
@@ -82,9 +83,10 @@ object TreeViewScanner {
     suspend fun getFolderDataRecursive(
         context: Context,
         folderPath: String,
-        options: MediaScanOptions = MediaScanOptions()
+        options: MediaScanOptions = MediaScanOptions(),
+        forceFileSystemCheck: Boolean = false,
     ): FolderData? = withContext(Dispatchers.IO) {
-        val allFolders = getOrBuildTreeViewData(context, options)
+        val allFolders = getOrBuildTreeViewData(context, options, forceFileSystemCheck)
         
         // First try exact match
         allFolders[folderPath]?.let { return@withContext it }
@@ -137,19 +139,20 @@ object TreeViewScanner {
      */
     private suspend fun getOrBuildTreeViewData(
         context: Context,
-        options: MediaScanOptions
+        options: MediaScanOptions,
+        forceFileSystemCheck: Boolean,
     ): Map<String, FolderData> = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         
         // Return cached data if still valid
         cachedTreeViewData?.let { cached ->
-            if (now - cacheTimestamp < CACHE_TTL_MS && cacheOptionsKey == options.cacheKey) {
+            if (!forceFileSystemCheck && now - cacheTimestamp < CACHE_TTL_MS && cacheOptionsKey == options.cacheKey) {
                 return@withContext cached
             }
         }
         
         // Build fresh data
-        val data = buildTreeViewData(context, options)
+        val data = buildTreeViewData(context, options, forceFileSystemCheck)
         
         // Update cache
         cachedTreeViewData = data
@@ -164,7 +167,8 @@ object TreeViewScanner {
      */
     private suspend fun buildTreeViewData(
         context: Context,
-        options: MediaScanOptions
+        options: MediaScanOptions,
+        forceFileSystemCheck: Boolean,
     ): Map<String, FolderData> = withContext(Dispatchers.IO) {
         val allFolders = mutableMapOf<String, FolderData>()
         val noMediaPathFilter = NoMediaPathFilter(options)
@@ -173,7 +177,7 @@ object TreeViewScanner {
         scanMediaStoreRecursive(context, allFolders, noMediaPathFilter)
         
         // Step 2: Scan filesystem for folders hidden from MediaStore.
-        scanFileSystemRoots(context, allFolders, options, noMediaPathFilter)
+        scanFileSystemRoots(context, allFolders, options, noMediaPathFilter, forceFileSystemCheck)
         
         // Step 3: Build parent folder hierarchy
         buildParentHierarchy(allFolders)
@@ -279,12 +283,13 @@ object TreeViewScanner {
         context: Context,
         folders: MutableMap<String, FolderData>,
         options: MediaScanOptions,
-        noMediaPathFilter: NoMediaPathFilter
+        noMediaPathFilter: NoMediaPathFilter,
+        forceFileSystemCheck: Boolean,
     ) {
         try {
             val rootsToScan = linkedSetOf<File>()
 
-            if (options.includeNoMediaFolders) {
+            if (shouldIncludePrimaryStorageInFilesystemFolderScan(options, forceFileSystemCheck)) {
                 rootsToScan += Environment.getExternalStorageDirectory()
             }
 

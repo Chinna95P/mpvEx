@@ -311,5 +311,6 @@ class ThumbnailRepository(
     return md.digest().joinToString("") { byte -> "%02x".format(byte) }
   }
 
-  private fun thumbnailModeKey(): String = browserPreferences.thumbnailMode.get().name
+  private fun thumbnailModeKey(): String =
+    browserPreferences.thumbnailMode.get().thumbnailModeCacheKey(browserPreferences.thumbnailFramePosition.get())
 }

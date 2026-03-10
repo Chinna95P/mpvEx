@@ -43,6 +43,7 @@ object VideoScanUtils {
         context: Context,
         folderPath: String,
         options: MediaScanOptions = MediaScanOptions(),
+        forceFileSystemCheck: Boolean = false,
     ): List<Video> = withContext(Dispatchers.IO) {
         val videosMap = mutableMapOf<String, Video>()
         val noMediaPathFilter = NoMediaPathFilter(options)
@@ -55,8 +56,13 @@ object VideoScanUtils {
         // Try MediaStore first (fast)
         scanVideosFromMediaStore(context, folderPath, videosMap, noMediaPathFilter)
 
-        // Fallback to filesystem if MediaStore returned nothing
-        if (folder.exists() && folder.canRead() && videosMap.isEmpty()) {
+        // Manual refreshes force a filesystem verification pass so new/deleted files are reflected
+        // even before MediaStore catches up.
+        if (
+            folder.exists() &&
+            folder.canRead() &&
+            shouldRunFilesystemVideoCheck(forceFileSystemCheck, videosMap.size)
+        ) {
             scanVideosFromFileSystem(context, folder, videosMap, options, noMediaPathFilter)
         }
 

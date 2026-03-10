@@ -1,10 +1,9 @@
 package app.marlboroadvance.mpvex.di
 
 import app.marlboroadvance.mpvex.domain.thumbnail.CoilVideoThumbnailDecoder
-import app.marlboroadvance.mpvex.domain.thumbnail.ThumbnailStrategy
+import app.marlboroadvance.mpvex.domain.thumbnail.toThumbnailStrategy
 import app.marlboroadvance.mpvex.domain.anime4k.Anime4KManager
 import app.marlboroadvance.mpvex.preferences.BrowserPreferences
-import app.marlboroadvance.mpvex.preferences.ThumbnailMode
 import app.marlboroadvance.mpvex.repository.AniCliRepository
 import app.marlboroadvance.mpvex.repository.wyzie.WyzieSearchRepository
 import coil3.ImageLoader
@@ -34,12 +33,9 @@ val domainModule = module {
                 add(
                     CoilVideoThumbnailDecoder.Factory(
                         thumbnailStrategy = {
-                            when (browserPreferences.thumbnailMode.get()) {
-                                ThumbnailMode.Smart -> ThumbnailStrategy.Hybrid(0.33f)
-                                ThumbnailMode.FirstFrame -> ThumbnailStrategy.FirstFrame
-                                ThumbnailMode.OneThird -> ThumbnailStrategy.FrameAtPercentage(0.33f)
-                                ThumbnailMode.Halfway -> ThumbnailStrategy.FrameAtPercentage(0.5f)
-                            }
+                            browserPreferences.thumbnailMode.get().toThumbnailStrategy(
+                                browserPreferences.thumbnailFramePosition.get()
+                            )
                         }
                     )
                 )

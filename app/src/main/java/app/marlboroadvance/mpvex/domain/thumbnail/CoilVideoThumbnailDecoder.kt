@@ -59,12 +59,16 @@ class CoilVideoThumbnailDecoder(
       retriever.setDataSource(source)
 
       val embeddedPicture =
-        retriever.embeddedPicture?.takeIf { it.isNotEmpty() }?.let { bytes ->
-          BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        if (strategy.prefersEmbeddedPicture()) {
+          retriever.embeddedPicture?.takeIf { it.isNotEmpty() }?.let { bytes ->
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+          }
+        } else {
+          null
         }
 
       val rawBitmap =
-        embeddedPicture ?: when (strategy) {
+        when (strategy) {
           ThumbnailStrategy.FirstFrame -> retriever.getFrameAtTime(0)
           is ThumbnailStrategy.FrameAtPercentage -> {
             retriever.getFrameAtTime(frameTimeMicros(retriever, strategy.percentage))
@@ -79,6 +83,8 @@ class CoilVideoThumbnailDecoder(
               firstFrame
             }
           }
+
+          ThumbnailStrategy.EmbeddedOrFirstFrame -> embeddedPicture ?: retriever.getFrameAtTime(0)
         } ?: throw IllegalStateException("Failed to decode video thumbnail")
 
       val rotatedBitmap = rotateBitmapIfNeeded(retriever, rawBitmap)
@@ -225,6 +231,10 @@ sealed class ThumbnailStrategy {
     val percentage: Float = 0.33f,
   ) : ThumbnailStrategy() {
     override val cacheKey: String = "hybrid_${percentage}"
+  }
+
+  data object EmbeddedOrFirstFrame : ThumbnailStrategy() {
+    override val cacheKey: String = "embedded_or_first_frame"
   }
 }
 
