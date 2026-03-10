@@ -638,7 +638,7 @@ fun ButtonSlotCard(
                         actions = {
                             IconButton(onClick = { dismissAndSave() }) {
                                 Icon(
-                                    Icons.Filled.CheckCircle,
+                                    Icons.Filled.Check,
                                     contentDescription = "Done",
                                     tint = MaterialTheme.colorScheme.primary,
                                 )

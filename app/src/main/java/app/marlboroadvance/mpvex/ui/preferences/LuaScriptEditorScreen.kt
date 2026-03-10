@@ -393,7 +393,7 @@ data class LuaScriptEditorScreen(
             shape = RoundedCornerShape(8.dp),
           ) {
             Icon(
-              Icons.Filled.CheckCircle,
+              Icons.Filled.Check,
               contentDescription = "Save",
             )
           }

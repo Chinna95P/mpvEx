@@ -248,9 +248,13 @@ class RecentlyPlayedViewModel(application: Application) : AndroidViewModel(appli
     // Extract URI components
     val uri = Uri.parse(url)
     
-    // Use parsed title from database if available, otherwise fallback to URI path
-    val videoTitle = parsedVideoTitle ?: uri.lastPathSegment ?: "Stream"
-    val displayName = videoTitle
+    // Prefer the title saved with the recent item so sources like AniCli keep their anime name.
+    val resolvedTitle = parsedVideoTitle
+      ?.takeIf { it.isNotBlank() }
+      ?: entity?.fileName?.takeIf { it.isNotBlank() }
+      ?: uri.lastPathSegment?.takeIf { it.isNotBlank() }
+      ?: "Stream"
+    val displayName = resolvedTitle
     
     // Use metadata from entity if available
     val duration = entity?.duration ?: 0L
@@ -280,7 +284,7 @@ class RecentlyPlayedViewModel(application: Application) : AndroidViewModel(appli
     
     return Video(
       id = url.hashCode().toLong(),
-      title = videoTitle,
+      title = resolvedTitle,
       displayName = displayName,
       path = url,
       uri = uri,

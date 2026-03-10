@@ -39,8 +39,6 @@ import me.zhanghai.compose.preference.SliderPreference
 import me.zhanghai.compose.preference.SwitchPreference
 import org.koin.compose.koinInject
 import kotlin.math.roundToInt
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 
 @Serializable
 object AppearancePreferencesScreen : Screen {
@@ -137,6 +135,21 @@ object AppearancePreferencesScreen : Screen {
                                     )
                                 },
                                 enabled = darkMode != DarkMode.Light
+                            )
+
+                            PreferenceDivider()
+
+                            val useSystemFont by preferences.useSystemFont.collectAsState()
+                            SwitchPreference(
+                                value = useSystemFont,
+                                onValueChange = preferences.useSystemFont::set,
+                                title = { Text(text = stringResource(id = R.string.pref_appearance_system_font_title)) },
+                                summary = {
+                                    Text(
+                                        text = stringResource(id = R.string.pref_appearance_system_font_summary),
+                                        color = MaterialTheme.colorScheme.outline,
+                                    )
+                                },
                             )
                         }
                     }

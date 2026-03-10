@@ -1244,13 +1244,10 @@ class PlayerActivity :
    * to the maximum allowed value if the system volume is lower than the maximum.
    */
   private fun updateVolume() {
-    viewModel.currentVolume.update {
-      audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).also { volume ->
-        if (volume < viewModel.maxVolume) {
-          viewModel.changeMPVVolumeTo(MAX_MPV_VOLUME)
-        }
-      }
-    }
+    viewModel.syncSystemVolumeState(
+      streamVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC),
+      mpvVolume = MPVLib.getPropertyInt("volume"),
+    )
   }
 
   /**

@@ -56,8 +56,10 @@ val GoogleSansFlex = FontFamily(
   ),
 )
 
+val SystemTypography = Typography()
+
 // Use Google Sans Flex typography app-wide
-val AppTypography = Typography().run {
+val AppTypography = SystemTypography.run {
   copy(
     displayLarge = displayLarge.copy(fontFamily = GoogleSansFlex),
     displayMedium = displayMedium.copy(fontFamily = GoogleSansFlex),
