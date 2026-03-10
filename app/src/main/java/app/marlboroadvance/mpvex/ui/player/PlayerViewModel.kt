@@ -2228,17 +2228,9 @@ class PlayerViewModel(
     }
   }
 
-  /** Called when the device orientation changes. Pauses ambient in portrait and refreshes it in landscape. */
+  /** Called when the device orientation changes. Refreshes ambient in both portrait and landscape. */
   fun onOrientationChanged(isPortrait: Boolean) {
     if (!_isAmbientEnabled.value) return
-
-    if (isPortrait) {
-      disableAmbientShader()
-      lastAmbientScaleX = -1.0
-      lastAmbientScaleY = -1.0
-      playerUpdate.value = PlayerUpdates.ShowText("Ambience Mode: Paused in portrait")
-      return
-    }
 
     // Force shader refresh to adapt to new screen dimensions.
     lastAmbientScaleX = -1.0

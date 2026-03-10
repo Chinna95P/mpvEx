@@ -2378,10 +2378,19 @@ class PlayerActivity :
           else -> "normal"
         }
 
+      // Prioritize intent title first if provided and valid
+      val intentTitle = intent.getStringExtra("title")
+      
       // Get parsed video title from MPV
-      val videoTitle = runCatching {
+      val mpvTitle = runCatching {
         MPVLib.getPropertyString("media-title")
-      }.getOrNull()?.takeIf { it.isNotBlank() && it != fileName }
+      }.getOrNull()
+
+      val videoTitle = when {
+        !HttpUtils.isLikelyJunkTitle(intentTitle) -> intentTitle
+        !HttpUtils.isLikelyJunkTitle(mpvTitle) && mpvTitle != fileName -> mpvTitle
+        else -> null
+      }
 
       // Get duration and file size from MPV
       val duration = runCatching {

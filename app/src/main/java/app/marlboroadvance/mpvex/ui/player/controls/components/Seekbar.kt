@@ -14,6 +14,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
@@ -80,6 +82,7 @@ fun SeekbarWithTimers(
   seekbarStyle: SeekbarStyle = SeekbarStyle.Wavy,
   loopStart: Float? = null,
   loopEnd: Float? = null,
+  isPortrait: Boolean = false,
   modifier: Modifier = Modifier,
 ) {
   val clickEvent = LocalPlayerButtonsClickEvent.current
@@ -106,106 +109,200 @@ fun SeekbarWithTimers(
     }
   }
 
-  Row(
-    modifier = modifier.height(48.dp),
-    verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
+  if (isPortrait) {
+    Column(
+      modifier = modifier
+        .fillMaxWidth()
+        .padding(horizontal = MaterialTheme.spacing.large),
+      verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+      SeekbarContent(
+        position = if (isUserInteracting) userPosition else animatedPosition.value,
+        duration = duration,
+        chapters = chapters,
+        paused = paused,
+        isUserInteracting = isUserInteracting,
+        seekbarStyle = seekbarStyle,
+        loopStart = loopStart,
+        loopEnd = loopEnd,
+        onUserInteractionChange = { isUserInteracting = it },
+        onUserPositionChange = { userPosition = it },
+        onValueChange = onValueChange,
+        onValueChangeFinished = onValueChangeFinished,
+        scope = scope,
+        animatedPosition = animatedPosition,
+        modifier = Modifier.fillMaxWidth().height(44.dp) // Taller for visibility
+      )
+
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        VideoTimer(
+          value = if (isUserInteracting) userPosition else position,
+          isInverted = timersInverted.first,
+          onClick = {
+            clickEvent()
+            positionTimerOnClick()
+          }
+        )
+
+        VideoTimer(
+          value = if (timersInverted.second) position - duration else duration,
+          isInverted = timersInverted.second,
+          onClick = {
+            clickEvent()
+            durationTimerOnCLick()
+          }
+        )
+      }
+    }
+  } else {
+    Row(
+      modifier = modifier.height(48.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+      VideoTimer(
+        value = if (isUserInteracting) userPosition else position,
+        isInverted = timersInverted.first,
+        onClick = {
+          clickEvent()
+          positionTimerOnClick()
+        },
+        modifier = Modifier.wrapContentWidth(),
+      )
+
+      SeekbarContent(
+        position = if (isUserInteracting) userPosition else animatedPosition.value,
+        duration = duration,
+        chapters = chapters,
+        paused = paused,
+        isUserInteracting = isUserInteracting,
+        seekbarStyle = seekbarStyle,
+        loopStart = loopStart,
+        loopEnd = loopEnd,
+        onUserInteractionChange = { isUserInteracting = it },
+        onUserPositionChange = { userPosition = it },
+        onValueChange = onValueChange,
+        onValueChangeFinished = onValueChangeFinished,
+        scope = scope,
+        animatedPosition = animatedPosition,
+        modifier = Modifier.weight(1f).height(48.dp)
+      )
+
+      VideoTimer(
+        value = if (timersInverted.second) position - duration else duration,
+        isInverted = timersInverted.second,
+        onClick = {
+          clickEvent()
+          durationTimerOnCLick()
+        },
+        modifier = Modifier.wrapContentWidth(),
+      )
+    }
+  }
+}
+
+@Composable
+private fun SeekbarContent(
+  position: Float,
+  duration: Float,
+  chapters: ImmutableList<Segment>,
+  paused: Boolean,
+  isUserInteracting: Boolean,
+  seekbarStyle: SeekbarStyle,
+  loopStart: Float?,
+  loopEnd: Float?,
+  onUserInteractionChange: (Boolean) -> Unit,
+  onUserPositionChange: (Float) -> Unit,
+  onValueChange: (Float) -> Unit,
+  onValueChangeFinished: () -> Unit,
+  scope: kotlinx.coroutines.CoroutineScope,
+  animatedPosition: Animatable<Float, *>,
+  modifier: Modifier = Modifier
+) {
+  var userPosition by remember(position) { mutableFloatStateOf(position) } // Local state for immediate feedback
+  
+  Box(
+    modifier = modifier,
+    contentAlignment = Alignment.Center,
   ) {
-    VideoTimer(
-      value = if (isUserInteracting) userPosition else position,
-      timersInverted.first,
-      onClick = {
-        clickEvent()
-        positionTimerOnClick()
-      },
-      modifier = Modifier.width(92.dp),
+    // Invisible expanded touch area
+    Box(
+      modifier = Modifier
+        .fillMaxWidth()
+        .height(64.dp) // Larger touch area
+        .pointerInput(Unit) {
+          detectTapGestures(
+            onTap = { offset ->
+              val newPosition = (offset.x / size.width) * duration
+              onUserInteractionChange(true)
+              val targetPos = newPosition.coerceIn(0f, duration)
+              onUserPositionChange(targetPos)
+              onValueChange(targetPos)
+              scope.launch {
+                animatedPosition.snapTo(targetPos)
+                onUserInteractionChange(false)
+                onValueChangeFinished()
+              }
+            }
+          )
+        }
+        .pointerInput(Unit) {
+          detectDragGestures(
+            onDragStart = {
+              onUserInteractionChange(true)
+            },
+            onDragEnd = {
+              scope.launch {
+                delay(50)
+                onUserInteractionChange(false)
+                onValueChangeFinished()
+              }
+            },
+            onDragCancel = {
+              scope.launch {
+                delay(50)
+                onUserInteractionChange(false)
+                onValueChangeFinished()
+              }
+            },
+          ) { change, _ ->
+            change.consume()
+            val newPosition = (change.position.x / size.width) * duration
+            val targetPos = newPosition.coerceIn(0f, duration)
+            onUserPositionChange(targetPos)
+            onValueChange(targetPos)
+          }
+        }
     )
 
-    // Seekbar with expanded touch area
+    // Visual seekbar (smaller, centered)
     Box(
-      modifier =
-        Modifier
-          .weight(1f)
-          .height(48.dp)
-          .padding(vertical = 8.dp), // Add vertical padding for larger touch area
+      modifier = Modifier
+        .fillMaxWidth()
+        .height(32.dp),
       contentAlignment = Alignment.Center,
     ) {
-      // Invisible expanded touch area
-      Box(
-        modifier = Modifier
-          .fillMaxWidth()
-          .height(64.dp) // Larger touch area
-          .pointerInput(Unit) {
-            detectTapGestures(
-              onTap = { offset ->
-                val newPosition = (offset.x / size.width) * duration
-                if (!isUserInteracting) isUserInteracting = true
-                userPosition = newPosition.coerceIn(0f, duration)
-                onValueChange(userPosition)
-                scope.launch { 
-                  // Snap to user position immediately to prevent jumping
-                  animatedPosition.snapTo(userPosition)
-                  isUserInteracting = false
-                  onValueChangeFinished()
-                }
-              }
-            )
-          }
-          .pointerInput(Unit) {
-            detectDragGestures(
-              onDragStart = { 
-                isUserInteracting = true 
-              },
-              onDragEnd = { 
-                scope.launch { 
-                  // Allow a tiny window for mpv/viewModel to sync back before releasing control
-                  delay(50) 
-                  animatedPosition.snapTo(userPosition)
-                  isUserInteracting = false
-                  onValueChangeFinished()
-                }
-              },
-              onDragCancel = { 
-                scope.launch { 
-                  delay(50)
-                  animatedPosition.snapTo(userPosition)
-                  isUserInteracting = false
-                  onValueChangeFinished()
-                }
-              },
-            ) { change, _ ->
-              change.consume()
-              val newPosition = (change.position.x / size.width) * duration
-              userPosition = newPosition.coerceIn(0f, duration)
-              onValueChange(userPosition)
-            }
-          }
-      )
-      
-      // Visual seekbar (smaller, centered)
-      Box(
-        modifier = Modifier
-          .fillMaxWidth()
-          .height(32.dp),
-        contentAlignment = Alignment.Center,
-      ) {
       when (seekbarStyle) {
         SeekbarStyle.Standard -> {
           StandardSeekbar(
-            position = if (isUserInteracting) userPosition else animatedPosition.value,
+            position = position,
             duration = duration,
             chapters = chapters,
             isPaused = paused,
             isScrubbing = isUserInteracting,
             seekbarStyle = SeekbarStyle.Standard,
             onSeek = { newPosition ->
-              if (!isUserInteracting) isUserInteracting = true
-              userPosition = newPosition
+              onUserInteractionChange(true)
+              onUserPositionChange(newPosition)
               onValueChange(newPosition)
             },
             onSeekFinished = {
-              scope.launch { animatedPosition.snapTo(userPosition) }
-              isUserInteracting = false
+              scope.launch { animatedPosition.snapTo(position) }
+              onUserInteractionChange(false)
               onValueChangeFinished()
             },
             loopStart = loopStart,
@@ -214,7 +311,7 @@ fun SeekbarWithTimers(
         }
         SeekbarStyle.Wavy -> {
           SquigglySeekbar(
-            position = if (isUserInteracting) userPosition else animatedPosition.value,
+            position = position,
             duration = duration,
             chapters = chapters,
             isPaused = paused,
@@ -229,20 +326,20 @@ fun SeekbarWithTimers(
         }
         SeekbarStyle.Thick -> {
           StandardSeekbar(
-            position = if (isUserInteracting) userPosition else animatedPosition.value,
+            position = position,
             duration = duration,
             chapters = chapters,
             isPaused = paused,
             isScrubbing = isUserInteracting,
             seekbarStyle = SeekbarStyle.Thick,
             onSeek = { newPosition ->
-              if (!isUserInteracting) isUserInteracting = true
-              userPosition = newPosition
+              onUserInteractionChange(true)
+              onUserPositionChange(newPosition)
               onValueChange(newPosition)
             },
             onSeekFinished = {
-              scope.launch { animatedPosition.snapTo(userPosition) }
-              isUserInteracting = false
+              scope.launch { animatedPosition.snapTo(position) }
+              onUserInteractionChange(false)
               onValueChangeFinished()
             },
             loopStart = loopStart,
@@ -252,18 +349,8 @@ fun SeekbarWithTimers(
       }
     }
   }
-
-    VideoTimer(
-      value = if (timersInverted.second) position - duration else duration,
-      isInverted = timersInverted.second,
-      onClick = {
-        clickEvent()
-        durationTimerOnCLick()
-      },
-      modifier = Modifier.width(92.dp),
-    )
-  }
 }
+
 
 @Composable
 private fun SquigglySeekbar(
@@ -565,16 +652,17 @@ fun VideoTimer(
   Text(
     modifier =
       modifier
-        .fillMaxHeight()
         .clickable(
           interactionSource = interactionSource,
           indication = ripple(),
           onClick = onClick,
         )
+        .padding(horizontal = 4.dp)
         .wrapContentHeight(Alignment.CenterVertically),
     text = Utils.prettyTime(value.toInt(), isInverted),
     color = Color.White,
     textAlign = TextAlign.Center,
+    style = MaterialTheme.typography.labelSmall
   )
 }
 

@@ -177,7 +177,19 @@ object NetworkStreamingScreen : Screen {
           bottom = navigationBarHeight
         ),
       ) {
-          // Section 1: Anime (ani-cli)
+          // Section 1: Stream Link
+          item {
+            StreamLinkSection(
+              onPlayLink = { url ->
+                MediaUtils.playFile(url, context, "network_stream")
+              },
+            )
+          }
+
+          // Section 2: Anime (ani-cli)
+          item {
+             Spacer(modifier = Modifier.height(24.dp))
+          }
           aniCliSection(
             uiState = aniCliState,
             onQueryChange = aniCliViewModel::updateQuery,
@@ -186,16 +198,6 @@ object NetworkStreamingScreen : Screen {
             onSelectAnime = aniCliViewModel::selectAnime,
             onSelectEpisode = aniCliViewModel::selectEpisode,
           )
-
-          // Section 2: Stream Link
-          item {
-            Spacer(modifier = Modifier.height(24.dp))
-            StreamLinkSection(
-              onPlayLink = { url ->
-                MediaUtils.playFile(url, context, "network_stream")
-              },
-            )
-          }
 
           // Section 3: Local Network header
           item {

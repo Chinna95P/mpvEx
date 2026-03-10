@@ -143,4 +143,33 @@ object HttpUtils {
       null
     }
   }
+
+  /**
+   * Checks if a title is likely to be a raw URL, query string, or generic filename
+   * rather than a human-readable media title.
+   */
+  fun isLikelyJunkTitle(title: String?): Boolean {
+    if (title.isNullOrBlank()) return true
+    
+    val lower = title.lowercase()
+    
+    // Check for common URL patterns
+    if (lower.startsWith("http") || lower.contains("://") || lower.contains("www.")) return true
+    
+    // Check for query parameters or common dynamic file types
+    if (lower.contains("?") || lower.contains("&") || lower.contains("=") || 
+        lower.contains(".aspx") || lower.contains(".php") || 
+        lower.contains(".jsp") || lower.contains(".cfm")) return true
+        
+    // Check for "download" prefix followed by nonsense
+    if (lower.startsWith("download.")) return true
+    
+    // Check for specific junk seen in user screenshots
+    if (lower.contains("share=") || lower.contains("tokens=")) return true
+    
+    // Unusually long strings with no spaces are likely URLs or hashes
+    if (title!!.length > 60 && !title.contains(" ")) return true
+    
+    return false
+  }
 }

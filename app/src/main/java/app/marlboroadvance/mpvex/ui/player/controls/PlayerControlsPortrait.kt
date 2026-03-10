@@ -12,9 +12,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -50,82 +53,55 @@ fun TopPlayerControlsPortrait(
   val playlistModeEnabled = viewModel.hasPlaylistSupport()
   val clickEvent = LocalPlayerButtonsClickEvent.current
 
-  Column {
-    Row(
-      modifier = Modifier.fillMaxWidth(),
-      verticalAlignment = Alignment.CenterVertically,
-    ) {
-      ControlsGroup {
-        ControlsButton(
-          icon = Icons.Default.ArrowBack,
-          onClick = onBackPress,
-          color = if (hideBackground) controlColor else MaterialTheme.colorScheme.onSurface,
-        )
+  Row(
+    modifier = Modifier
+      .fillMaxWidth()
+      .padding(top = MaterialTheme.spacing.medium)
+      .padding(horizontal = MaterialTheme.spacing.medium),
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    ControlsGroup {
+      ControlsButton(
+        icon = Icons.Default.ArrowBack,
+        onClick = onBackPress,
+        color = if (hideBackground) controlColor else MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.size(45.dp),
+      )
 
-        val titleInteractionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+      val titleInteractionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
 
-        androidx.compose.foundation.layout.Box(
-          modifier =
-            Modifier
-              .clip(CircleShape)
-              .clickable(
-                interactionSource = titleInteractionSource,
-                indication = ripple(bounded = true),
-                enabled = playlistModeEnabled,
-                onClick = {
-                  clickEvent()
-                  onOpenSheet(Sheets.Playlist)
-                },
-              ),
+      Surface(
+        shape = CircleShape,
+        color = if (hideBackground) Color.Transparent else MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.55f),
+        contentColor = if (hideBackground) controlColor else MaterialTheme.colorScheme.onSurface,
+        onClick = {
+          clickEvent()
+          onOpenSheet(Sheets.Playlist)
+        },
+        enabled = playlistModeEnabled,
+        border = if (hideBackground) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+        modifier = Modifier
+          .padding(start = 4.dp)
+          .height(45.dp),
+      ) {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          modifier = Modifier.padding(horizontal = 14.dp),
         ) {
-          Surface(
-            shape = CircleShape,
-            color =
-              if (hideBackground) {
-                Color.Transparent
-              } else {
-                MaterialTheme.colorScheme.surfaceContainer.copy(
-                  alpha = 0.55f,
-                )
-              },
-            contentColor = if (hideBackground) controlColor else MaterialTheme.colorScheme.onSurface,
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp,
-            border =
-              if (hideBackground) {
-                null
-              } else {
-                BorderStroke(
-                  1.dp,
-                  MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                )
-              },
-          ) {
-            Row(
-              verticalAlignment = Alignment.CenterVertically,
-              modifier =
-                Modifier
-                  .padding(
-                    horizontal = MaterialTheme.spacing.medium,
-                    vertical = MaterialTheme.spacing.small,
-                  ),
-            ) {
-              Text(
-                mediaTitle ?: "",
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.weight(1f, fill = false),
-              )
-              viewModel.getPlaylistInfo()?.let { playlistInfo ->
-                Text(
-                  " • $playlistInfo",
-                  maxLines = 1,
-                  overflow = TextOverflow.Visible,
-                  style = MaterialTheme.typography.bodySmall,
-                )
-              }
-            }
+          Text(
+            mediaTitle ?: "",
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f, fill = false),
+          )
+          viewModel.getPlaylistInfo()?.let { playlistInfo ->
+            Text(
+              " • $playlistInfo",
+              maxLines = 1,
+              style = MaterialTheme.typography.bodySmall,
+              color = LocalContentColor.current.copy(alpha = 0.7f),
+            )
           }
         }
       }
@@ -154,33 +130,31 @@ fun BottomPlayerControlsPortrait(
   Row(
     modifier = Modifier
       .fillMaxWidth()
-      .padding(bottom = MaterialTheme.spacing.large)
-      .horizontalScroll(rememberScrollState()),
-    horizontalArrangement = Arrangement.Center,
+      .horizontalScroll(rememberScrollState())
+      .padding(bottom = MaterialTheme.spacing.medium),
+    horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium, Alignment.CenterHorizontally),
     verticalAlignment = Alignment.CenterVertically,
   ) {
-    ControlsGroup {
-      buttons.forEach { button ->
-        RenderPlayerButton(
-          button = button,
-          chapters = chapters,
-          currentChapter = currentChapter,
-          isPortrait = true,
-          isSpeedNonOne = isSpeedNonOne,
-          currentZoom = currentZoom,
-          aspect = aspect,
-          mediaTitle = mediaTitle,
-          hideBackground = hideBackground,
-          onBackPress = onBackPress,
-          onOpenSheet = onOpenSheet,
-          onOpenPanel = onOpenPanel,
-          viewModel = viewModel,
-          activity = activity,
-          decoder = decoder,
-          playbackSpeed = playbackSpeed,
-          buttonSize = 48.dp,
-        )
-      }
+    buttons.forEach { button ->
+      RenderPlayerButton(
+        button = button,
+        chapters = chapters,
+        currentChapter = currentChapter,
+        isPortrait = true,
+        isSpeedNonOne = isSpeedNonOne,
+        currentZoom = currentZoom,
+        aspect = aspect,
+        mediaTitle = mediaTitle,
+        hideBackground = hideBackground,
+        onBackPress = onBackPress,
+        onOpenSheet = onOpenSheet,
+        onOpenPanel = onOpenPanel,
+        viewModel = viewModel,
+        activity = activity,
+        decoder = decoder,
+        playbackSpeed = playbackSpeed,
+        buttonSize = 44.dp, // Slightly more compact size
+      )
     }
   }
 }

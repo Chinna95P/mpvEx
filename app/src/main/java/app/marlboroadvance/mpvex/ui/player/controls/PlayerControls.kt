@@ -708,7 +708,7 @@ fun PlayerControls(
             modifier = Modifier.constrainAs(customButtonsPortraitRef) {
                 start.linkTo(parent.start, spacing.large)
                 end.linkTo(parent.end, spacing.large)
-                bottom.linkTo(seekbar.top, spacing.medium)
+                bottom.linkTo(seekbar.top, spacing.small) // Reduced from medium
                 width = Dimension.fillToConstraints
                 height = Dimension.wrapContent
             }
@@ -784,7 +784,7 @@ fun PlayerControls(
               end.linkTo(parent.absoluteRight)
               start.linkTo(parent.absoluteLeft)
               if (isPortrait) {
-                bottom.linkTo(bottomRightControls.top, spacing.large)
+                bottom.linkTo(bottomRightControls.top, spacing.medium) // Reduced from large
               } else {
                 top.linkTo(parent.top)
                 bottom.linkTo(parent.bottom)
@@ -1044,7 +1044,7 @@ fun PlayerControls(
               )
               .constrainAs(seekbar) {
                 if (isPortrait) {
-                  bottom.linkTo(playerPauseButton.top, spacing.small)
+                  bottom.linkTo(playerPauseButton.top, spacing.medium)
                 } else {
                   bottom.linkTo(parent.bottom, spacing.small)
                 }
@@ -1079,6 +1079,7 @@ fun PlayerControls(
             seekbarStyle = seekbarStyle,
             loopStart = abLoopA?.toFloat(),
             loopEnd = abLoopB?.toFloat(),
+            isPortrait = isPortrait,
           )
         }
 
@@ -1240,7 +1241,7 @@ fun PlayerControls(
               )
               .constrainAs(bottomRightControls) {
                 if (isPortrait) {
-                  bottom.linkTo(parent.bottom, spacing.extraLarge)
+                  bottom.linkTo(parent.bottom, spacing.large) // Reduced from extraLarge
                   start.linkTo(parent.start, spacing.large)
                   end.linkTo(parent.end, spacing.large)
                   width = Dimension.fillToConstraints
