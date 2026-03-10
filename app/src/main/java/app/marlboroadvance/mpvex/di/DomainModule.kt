@@ -1,9 +1,19 @@
 package app.marlboroadvance.mpvex.di
 
+import app.marlboroadvance.mpvex.domain.thumbnail.CoilVideoThumbnailDecoder
+import app.marlboroadvance.mpvex.domain.thumbnail.ThumbnailStrategy
 import app.marlboroadvance.mpvex.domain.anime4k.Anime4KManager
+import app.marlboroadvance.mpvex.preferences.BrowserPreferences
+import app.marlboroadvance.mpvex.preferences.ThumbnailMode
 import app.marlboroadvance.mpvex.repository.AniCliRepository
 import app.marlboroadvance.mpvex.repository.wyzie.WyzieSearchRepository
+import coil3.ImageLoader
+import coil3.disk.DiskCache
+import coil3.disk.directory
+import coil3.request.CachePolicy
+import coil3.request.crossfade
 import okhttp3.OkHttpClient
+import okio.FileSystem
 import org.koin.dsl.module
 import org.koin.android.ext.koin.androidContext
 import java.util.concurrent.TimeUnit
@@ -14,6 +24,35 @@ val domainModule = module {
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
+            .build()
+    }
+    single<ImageLoader> {
+        val context = androidContext()
+        val browserPreferences = get<BrowserPreferences>()
+        ImageLoader.Builder(context)
+            .components {
+                add(
+                    CoilVideoThumbnailDecoder.Factory(
+                        thumbnailStrategy = {
+                            when (browserPreferences.thumbnailMode.get()) {
+                                ThumbnailMode.Smart -> ThumbnailStrategy.Hybrid(0.33f)
+                                ThumbnailMode.FirstFrame -> ThumbnailStrategy.FirstFrame
+                                ThumbnailMode.OneThird -> ThumbnailStrategy.FrameAtPercentage(0.33f)
+                                ThumbnailMode.Halfway -> ThumbnailStrategy.FrameAtPercentage(0.5f)
+                            }
+                        }
+                    )
+                )
+            }
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .diskCache(
+                DiskCache.Builder()
+                    .fileSystem(FileSystem.SYSTEM)
+                    .directory(context.cacheDir.resolve("thumbnails"))
+                    .maxSizePercent(0.05)
+                    .build()
+            )
+            .crossfade(true)
             .build()
     }
     single { Anime4KManager(androidContext()) }

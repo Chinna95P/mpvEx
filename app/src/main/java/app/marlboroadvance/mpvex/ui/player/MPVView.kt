@@ -104,6 +104,11 @@ class MPVView(
       MPVLib.setOptionString("gpu-context", "androidvk")
     }
 
+    applyHdrScreenOutputOptions(
+      enabled = decoderPreferences.hdrScreenOutput.get(),
+      pipelineReady = decoderPreferences.useVulkan.get() && decoderPreferences.gpuNext.get(),
+    )
+
     // Set hwdec with fallback order: HW+ (mediacodec) -> HW (mediacodec-copy) -> SW (no)
     MPVLib.setOptionString(
       "hwdec",
@@ -143,6 +148,15 @@ class MPVView(
 
     setupSubtitlesOptions()
     setupAudioOptions()
+  }
+
+  private fun applyHdrScreenOutputOptions(
+    enabled: Boolean,
+    pipelineReady: Boolean,
+  ) {
+    val hintValue = if (enabled && pipelineReady) "yes" else "no"
+    MPVLib.setOptionString("target-colorspace-hint-mode", "source")
+    MPVLib.setOptionString("target-colorspace-hint", hintValue)
   }
 
   override fun observeProperties() {

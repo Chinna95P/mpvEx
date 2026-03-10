@@ -26,10 +26,17 @@
   <string name="pref_appearance_hide_player_buttons_background_title">Hide player buttons background</string>
   <string name="pref_appearance_hide_player_buttons_background_summary">Hide the background of all player control buttons</string>
   <string name="pref_appearance_category_file_browser">File Browser</string>
+  <string name="pref_appearance_category_thumbnails">Thumbnails</string>
   <string name="pref_appearance_show_unplayed_old_video_label_title">Show label for new unplayed videos</string>
   <string name="pref_appearance_show_unplayed_old_video_label_summary">Display a \"New\" label on videos added within specified days that have never been played</string>
   <string name="pref_appearance_unplayed_old_video_days_title">Days threshold for new video label</string>
   <string name="pref_appearance_unplayed_old_video_days_summary">Videos added within the last %d days without playback history will be marked as new</string>
+  <string name="pref_appearance_show_video_thumbnails_title">Show video thumbnails</string>
+  <string name="pref_appearance_show_video_thumbnails_summary">Display generated thumbnails in video lists and folders</string>
+  <string name="pref_appearance_thumbnail_generation_title">Thumbnail generation strategy</string>
+  <string name="pref_appearance_thumbnail_generation_summary">Choose which frame is used when thumbnails are generated</string>
+  <string name="pref_appearance_thumbnail_generation_change_title">Change thumbnail strategy?</string>
+  <string name="pref_appearance_thumbnail_generation_change_summary">This will clear cached thumbnails. New thumbnails will be generated with the selected strategy as you browse.</string>
   <string name="pref_appearance_show_network_thumbnails_title">Show network thumbnails (Experimental)</string>
   <string name="pref_appearance_show_network_thumbnails_summary">Generate thumbnails for network streams (May increase data usage on mobile networks)</string>
   <string name="pref_appearance_theme_picker_label">App Theme</string>
@@ -229,6 +236,8 @@
   <string name="pref_advanced_cleared_playback_history">Cleared playback history</string>
   <string name="pref_advanced_clear_fonts_cache">Clear cached fonts</string>
   <string name="pref_advanced_cleared_fonts_cache">Cleared cached fonts</string>
+  <string name="pref_thumbnail_cache_cleared">Thumbnail cache cleared</string>
+  <string name="pref_thumbnail_cache_clear_failed">Failed to clear thumbnail cache: %1$s</string>
   <string name="pref_advanced_enable_recently_played_title">Recently Played</string>
   <string name="pref_advanced_enable_recently_played_summary">Track and display recently played videos and playlists</string>
   <string name="pref_advanced_features_tooltip">Enable experimental or advanced features such as stats page and Anime4K upscaling</string>
@@ -407,7 +416,9 @@
   <string name="pref_player_use_precise_seeking">Use precise seeking</string>
   <!-- Folders Preferences -->
   <string name="pref_folders_title">Folders</string>
-  <string name="pref_folders_summary">Manage folder blacklist</string>
+  <string name="pref_folders_summary">Manage folder blacklist and .nomedia handling</string>
+  <string name="pref_folders_include_nomedia_title">Include .nomedia folders</string>
+  <string name="pref_folders_include_nomedia_summary">When enabled, scans also include videos from folders hidden by .nomedia and their subfolders.</string>
   <string name="pref_folders_empty_title">No blacklisted folders</string>
   <string name="pref_folders_empty_message">Tap the button below to add folders you want to hide from the folder list</string>
   <string name="pref_folders_add_folder">Add Folder to Blacklist</string>

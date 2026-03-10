@@ -3,6 +3,7 @@ package app.marlboroadvance.mpvex.ui.preferences
 import app.marlboroadvance.mpvex.ui.icons.Icon
 import app.marlboroadvance.mpvex.ui.icons.Icons
 
+import android.widget.Toast
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,23 +18,37 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.marlboroadvance.mpvex.R
+import app.marlboroadvance.mpvex.domain.thumbnail.ThumbnailRepository
 import app.marlboroadvance.mpvex.preferences.AppearancePreferences
 import app.marlboroadvance.mpvex.preferences.BrowserPreferences
 import app.marlboroadvance.mpvex.preferences.GesturePreferences
 import app.marlboroadvance.mpvex.preferences.MultiChoiceSegmentedButton
+import app.marlboroadvance.mpvex.preferences.ThumbnailMode
 import app.marlboroadvance.mpvex.preferences.preference.collectAsState
 import app.marlboroadvance.mpvex.presentation.Screen
+import app.marlboroadvance.mpvex.presentation.components.ConfirmDialog
 import app.marlboroadvance.mpvex.ui.preferences.components.ThemePicker
 import app.marlboroadvance.mpvex.ui.theme.DarkMode
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import me.zhanghai.compose.preference.ListPreference
+import me.zhanghai.compose.preference.Preference
 import me.zhanghai.compose.preference.ProvidePreferenceLocals
 import me.zhanghai.compose.preference.SliderPreference
 import me.zhanghai.compose.preference.SwitchPreference
@@ -45,20 +60,99 @@ object AppearancePreferencesScreen : Screen {
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     override fun Content() {
+        val context = LocalContext.current
         val preferences = koinInject<AppearancePreferences>()
         val browserPreferences = koinInject<BrowserPreferences>()
         val gesturePreferences = koinInject<GesturePreferences>()
+        val thumbnailRepository = koinInject<ThumbnailRepository>()
         val backstack = LocalBackStack.current
+        val scope = rememberCoroutineScope()
         val systemDarkTheme = isSystemInDarkTheme()
 
         val darkMode by preferences.darkMode.collectAsState()
         val appTheme by preferences.appTheme.collectAsState()
+        var pendingThumbnailMode by remember { mutableStateOf<ThumbnailMode?>(null) }
+        var isClearThumbnailCacheConfirmShown by remember { mutableStateOf(false) }
 
         // Determine if we're in dark mode for theme preview
         val isDarkMode = when (darkMode) {
             DarkMode.Dark -> true
             DarkMode.Light -> false
             DarkMode.System -> systemDarkTheme
+        }
+
+        if (pendingThumbnailMode != null) {
+            ConfirmDialog(
+                title = stringResource(R.string.pref_appearance_thumbnail_generation_change_title),
+                subtitle = stringResource(R.string.pref_appearance_thumbnail_generation_change_summary),
+                onConfirm = {
+                    val selectedMode = pendingThumbnailMode
+                    pendingThumbnailMode = null
+                    if (selectedMode != null) {
+                        browserPreferences.thumbnailMode.set(selectedMode)
+                        scope.launch {
+                            val result = withContext(Dispatchers.IO) {
+                                runCatching { thumbnailRepository.clearThumbnailCache() }
+                            }
+                            result
+                                .onSuccess {
+                                    Toast
+                                        .makeText(
+                                            context,
+                                            context.getString(R.string.pref_thumbnail_cache_cleared),
+                                            Toast.LENGTH_SHORT,
+                                        ).show()
+                                }.onFailure { error ->
+                                    Toast
+                                        .makeText(
+                                            context,
+                                            context.getString(
+                                                R.string.pref_thumbnail_cache_clear_failed,
+                                                error.message ?: "Unknown error",
+                                            ),
+                                            Toast.LENGTH_LONG,
+                                        ).show()
+                                }
+                        }
+                    }
+                },
+                onCancel = { pendingThumbnailMode = null },
+            )
+        }
+
+        if (isClearThumbnailCacheConfirmShown) {
+            ConfirmDialog(
+                title = stringResource(R.string.pref_clear_thumbnail_cache_title),
+                subtitle = stringResource(R.string.pref_clear_thumbnail_cache_summary),
+                onConfirm = {
+                    isClearThumbnailCacheConfirmShown = false
+                    scope.launch {
+                        val result = withContext(Dispatchers.IO) {
+                            runCatching { thumbnailRepository.clearThumbnailCache() }
+                        }
+                        result
+                            .onSuccess {
+                                Toast
+                                    .makeText(
+                                        context,
+                                        context.getString(R.string.pref_thumbnail_cache_cleared),
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                            }.onFailure { error ->
+                                Toast
+                                    .makeText(
+                                        context,
+                                        context.getString(
+                                            R.string.pref_thumbnail_cache_clear_failed,
+                                            error.message ?: "Unknown error",
+                                        ),
+                                        Toast.LENGTH_LONG,
+                                    ).show()
+                            }
+                    }
+                },
+                onCancel = { isClearThumbnailCacheConfirmShown = false },
+            )
         }
 
         Scaffold(
@@ -256,6 +350,51 @@ object AppearancePreferencesScreen : Screen {
                                     )
                                 },
                             )
+                        }
+                    }
+
+                    item {
+                        PreferenceSectionHeader(title = stringResource(id = R.string.pref_appearance_category_thumbnails))
+                    }
+
+                    item {
+                        PreferenceCard {
+                            val showVideoThumbnails by browserPreferences.showVideoThumbnails.collectAsState()
+                            SwitchPreference(
+                                value = showVideoThumbnails,
+                                onValueChange = { browserPreferences.showVideoThumbnails.set(it) },
+                                title = {
+                                    Text(text = stringResource(id = R.string.pref_appearance_show_video_thumbnails_title))
+                                },
+                                summary = {
+                                    Text(
+                                        text = stringResource(id = R.string.pref_appearance_show_video_thumbnails_summary),
+                                        color = MaterialTheme.colorScheme.outline,
+                                    )
+                                }
+                            )
+
+                            PreferenceDivider()
+
+                            val thumbnailMode by browserPreferences.thumbnailMode.collectAsState()
+                            ListPreference(
+                                value = thumbnailMode,
+                                onValueChange = { newMode ->
+                                    if (newMode != thumbnailMode) {
+                                        pendingThumbnailMode = newMode
+                                    }
+                                },
+                                values = ThumbnailMode.entries,
+                                valueToText = { AnnotatedString(it.displayName) },
+                                title = { Text(text = stringResource(id = R.string.pref_appearance_thumbnail_generation_title)) },
+                                summary = {
+                                    Text(
+                                        text = thumbnailMode.displayName,
+                                        color = MaterialTheme.colorScheme.outline,
+                                    )
+                                },
+                                enabled = showVideoThumbnails,
+                            )
 
                             PreferenceDivider()
 
@@ -273,7 +412,8 @@ object AppearancePreferencesScreen : Screen {
                                         text = stringResource(id = R.string.pref_gesture_tap_thumbnail_to_select_summary),
                                         color = MaterialTheme.colorScheme.outline,
                                     )
-                                }
+                                },
+                                enabled = showVideoThumbnails,
                             )
 
                             PreferenceDivider()
@@ -292,7 +432,21 @@ object AppearancePreferencesScreen : Screen {
                                         text = stringResource(id = R.string.pref_appearance_show_network_thumbnails_summary),
                                         color = MaterialTheme.colorScheme.outline,
                                     )
-                                }
+                                },
+                                enabled = showVideoThumbnails,
+                            )
+
+                            PreferenceDivider()
+
+                            Preference(
+                                title = { Text(text = stringResource(id = R.string.pref_clear_thumbnail_cache_title)) },
+                                summary = {
+                                    Text(
+                                        text = stringResource(id = R.string.pref_clear_thumbnail_cache_summary),
+                                        color = MaterialTheme.colorScheme.outline,
+                                    )
+                                },
+                                onClick = { isClearThumbnailCacheConfirmShown = true },
                             )
                         }
                     }

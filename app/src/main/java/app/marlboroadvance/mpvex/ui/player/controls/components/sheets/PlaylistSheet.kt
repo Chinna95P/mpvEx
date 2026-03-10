@@ -3,12 +3,7 @@ package app.marlboroadvance.mpvex.ui.player.controls.components.sheets
 import app.marlboroadvance.mpvex.ui.icons.Icon
 import app.marlboroadvance.mpvex.ui.icons.Icons
 
-import android.content.Context
-import android.graphics.Bitmap
 import android.net.Uri
-import android.provider.MediaStore
-import android.provider.MediaStore.Video.Thumbnails
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -61,12 +56,15 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.geometry.Offset
+import coil3.ImageLoader
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import app.marlboroadvance.mpvex.presentation.components.PlayerSheet
 import app.marlboroadvance.mpvex.preferences.preference.collectAsState
 import app.marlboroadvance.mpvex.ui.theme.spacing
 import kotlinx.collections.immutable.ImmutableList
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import org.koin.compose.koinInject
 
 data class PlaylistItem(
   val uri: Uri,
@@ -80,150 +78,21 @@ data class PlaylistItem(
   val resolution: String = "", // Resolution (e.g., "1920x1080")
 )
 
-/**
- * LRU (Least Recently Used) cache for Bitmap thumbnails with a maximum size limit.
- * This prevents memory issues when dealing with large playlists (100+ videos).
- */
-class LRUBitmapCache(private val maxSize: Int) {
-  private val cache = LinkedHashMap<String, Bitmap?>(maxSize + 1, 1f, true)
-
-  operator fun get(key: String): Bitmap? = synchronized(this) { cache[key] }
-
-  operator fun set(key: String, value: Bitmap?) = synchronized(this) {
-    cache[key] = value
-    if (cache.size > maxSize) {
-      // Remove the least recently used item
-      cache.remove(cache.keys.firstOrNull())
-    }
-  }
-
-  fun containsKey(key: String): Boolean = synchronized(this) { cache.containsKey(key) }
-
-  fun clear() = synchronized(this) { cache.clear() }
+private fun playlistThumbnailKey(item: PlaylistItem): String {
+  val base = item.path.ifBlank { item.uri.toString() }
+  return "playlist-thumb|$base"
 }
 
-/**
- * Loads a thumbnail from MediaStore cache (much faster than generating new thumbnails).
- * Uses the modern loadThumbnail API on Android Q+ for better performance.
- * Falls back to null if no cached thumbnail exists (in which case a placeholder will be shown).
- */
-private suspend fun loadMediaStoreThumbnail(context: Context, uri: Uri): Bitmap? {
-  return withContext(Dispatchers.IO) {
-    try {
-      when (uri.scheme) {
-        // For content:// URIs, we need to find the video ID first
-        "content" -> {
-          val videoId = extractVideoId(uri, context)
-          if (videoId != null) {
-            // Use modern API on Android Q+
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-              val contentUri = android.content.ContentUris.withAppendedId(
-                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-                videoId
-              )
-              context.contentResolver.loadThumbnail(
-                contentUri,
-                android.util.Size(512, 512),
-                null
-              )
-            } else {
-              @Suppress("DEPRECATION")
-              Thumbnails.getThumbnail(
-                context.contentResolver,
-                videoId,
-                Thumbnails.MINI_KIND,
-                null
-              )
-            }
-          } else {
-            null
-          }
-        }
-        // For file:// URIs, try to find the corresponding MediaStore entry
-        "file" -> {
-          val filePath = uri.path ?: return@withContext null
-          val projection = arrayOf(MediaStore.Video.Media._ID)
-          val selection = "${MediaStore.Video.Media.DATA} = ?"
-          val selectionArgs = arrayOf(filePath)
-
-          context.contentResolver.query(
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-            projection,
-            selection,
-            selectionArgs,
-            null
-          )?.use { cursor ->
-            if (cursor.moveToFirst()) {
-              val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
-              val videoId = cursor.getLong(idColumn)
-              
-              // Use modern API on Android Q+
-              if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                val contentUri = android.content.ContentUris.withAppendedId(
-                  MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-                  videoId
-                )
-                context.contentResolver.loadThumbnail(
-                  contentUri,
-                  android.util.Size(512, 512),
-                  null
-                )
-              } else {
-                @Suppress("DEPRECATION")
-                Thumbnails.getThumbnail(
-                  context.contentResolver,
-                  videoId,
-                  Thumbnails.MINI_KIND,
-                  null
-                )
-              }
-            } else {
-              null
-            }
-          }
-        }
-        else -> null
-      }
-    } catch (e: Exception) {
-      // Fallback with placeholder if thumbnail loading fails
-      android.util.Log.w("PlaylistSheet", "Failed to load MediaStore thumbnail for $uri", e)
-      null
-    }
-  }
-}
-
-/**
- * Extracts the video ID from a content:// URI.
- */
-private fun extractVideoId(uri: Uri, context: Context): Long? {
-  return try {
-    val path = uri.path ?: return null
-    // Extract ID from path like /external/video/media/123
-    val idString = path.substringAfterLast('/').toLongOrNull() ?: return null
-
-    // Verify this ID exists in MediaStore
-    val projection = arrayOf(MediaStore.Video.Media._ID)
-    val selection = "${MediaStore.Video.Media._ID} = ?"
-    val selectionArgs = arrayOf(idString.toString())
-
-    context.contentResolver.query(
-      MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-      projection,
-      selection,
-      selectionArgs,
-      null
-    )?.use { cursor ->
-      if (cursor.moveToFirst()) {
-        val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
-        cursor.getLong(idColumn)
-      } else {
-        null
-      }
-    }
-  } catch (e: Exception) {
-    null
-  }
-}
+private fun buildPlaylistThumbnailRequest(
+  context: android.content.Context,
+  item: PlaylistItem,
+): ImageRequest =
+  ImageRequest.Builder(context)
+    .data(item.uri)
+    .memoryCacheKey(playlistThumbnailKey(item))
+    .diskCacheKey(playlistThumbnailKey(item))
+    .crossfade(true)
+    .build()
 
 @Composable
 fun PlaylistSheet(
@@ -237,6 +106,7 @@ fun PlaylistSheet(
 ) {
   val context = LocalContext.current
   val configuration = LocalConfiguration.current
+  val imageLoader = koinInject<ImageLoader>()
 
   val accentColor = MaterialTheme.colorScheme.primary
 
@@ -258,11 +128,6 @@ fun PlaylistSheet(
     if (!isPortrait && isListMode != isListModePreference) {
       playerPreferences.playlistViewMode.set(isListMode)
     }
-  }
-
-  // Thumbnail cache with LRU eviction - limited size to prevent memory issues with large playlists
-  val thumbnailCache by remember {
-    mutableStateOf(LRUBitmapCache(maxSize = 50))
   }
 
   // Scroll state for the playlist
@@ -378,8 +243,7 @@ fun PlaylistSheet(
             items(playlist) { item ->
               PlaylistTrackListItem(
                 item = item,
-                context = context,
-                thumbnailCache = thumbnailCache,
+                imageLoader = imageLoader,
                 onClick = { onItemClick(item) },
                 skipThumbnail = isM3UPlaylist,
                 accentColor = accentColor
@@ -399,8 +263,7 @@ fun PlaylistSheet(
             items(playlist) { item ->
               PlaylistTrackGridItem(
                 item = item,
-                context = context,
-                thumbnailCache = thumbnailCache as LRUBitmapCache,
+                imageLoader = imageLoader,
                 onClick = {
                   onItemClick(item)
                 },
@@ -417,8 +280,7 @@ fun PlaylistSheet(
 @Composable
 fun PlaylistTrackListItem(
   item: PlaylistItem,
-  context: Context,
-  thumbnailCache: LRUBitmapCache,
+  imageLoader: ImageLoader,
   onClick: () -> Unit,
   skipThumbnail: Boolean = false,
   accentColor: Color,
@@ -426,22 +288,7 @@ fun PlaylistTrackListItem(
 ) {
   // Use theme colors dynamically
   val accentSecondary = MaterialTheme.colorScheme.tertiary
-
-  // Thumbnail state - uses cache to persist across recompositions
-  val videoPath = item.path.ifBlank { item.uri.toString() }
-  var thumbnail by remember(videoPath) {
-    mutableStateOf(thumbnailCache[videoPath])
-  }
-
-  // Load thumbnail asynchronously
-  // Skip thumbnail loading for M3U playlists (network streams)
-  LaunchedEffect(videoPath) {
-    if (!skipThumbnail && !thumbnailCache.containsKey(videoPath)) {
-      val bmp = loadMediaStoreThumbnail(context, item.uri)
-      thumbnail = bmp
-      thumbnailCache[videoPath] = bmp
-    }
-  }
+  val context = LocalContext.current
 
   val borderModifier = if (item.isPlaying) {
     Modifier.border(
@@ -486,21 +333,19 @@ fun PlaylistTrackListItem(
           .background(MaterialTheme.colorScheme.surfaceContainerHigh),
         contentAlignment = Alignment.Center,
       ) {
-        // Show actual thumbnail or fallback icon
-        thumbnail?.let { bmp ->
-          Image(
-            bitmap = bmp.asImageBitmap(),
+        Icon(
+          imageVector = Icons.Outlined.Movie,
+          contentDescription = null,
+          tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+          modifier = Modifier.size(24.dp),
+        )
+        if (!skipThumbnail) {
+          AsyncImage(
+            model = remember(item.uri, item.path) { buildPlaylistThumbnailRequest(context, item) },
+            imageLoader = imageLoader,
             contentDescription = "Thumbnail",
             modifier = Modifier.matchParentSize(),
             contentScale = ContentScale.Crop,
-          )
-        } ?: run {
-          // Movie icon as fallback placeholder
-          Icon(
-            imageVector = Icons.Outlined.Movie,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-            modifier = Modifier.size(24.dp),
           )
         }
 
@@ -617,8 +462,7 @@ fun PlaylistTrackListItem(
 @Composable
 fun PlaylistTrackGridItem(
   item: PlaylistItem,
-  context: Context,
-  thumbnailCache: LRUBitmapCache,
+  imageLoader: ImageLoader,
   onClick: () -> Unit,
   skipThumbnail: Boolean = false,
   modifier: Modifier = Modifier,
@@ -626,22 +470,7 @@ fun PlaylistTrackGridItem(
   // Use theme colors dynamically
   val accentColor = MaterialTheme.colorScheme.primary
   val accentSecondary = MaterialTheme.colorScheme.tertiary
-
-  // Thumbnail state - uses cache to persist across recompositions
-  val videoPath = item.path.ifBlank { item.uri.toString() }
-  var thumbnail by remember(videoPath) {
-    mutableStateOf(thumbnailCache[videoPath])
-  }
-
-  // Load thumbnail asynchronously
-  // Skip thumbnail loading for M3U playlists (network streams)
-  LaunchedEffect(videoPath) {
-    if (!skipThumbnail && !thumbnailCache.containsKey(videoPath)) {
-      val bmp = loadMediaStoreThumbnail(context, item.uri)
-      thumbnail = bmp
-      thumbnailCache[videoPath] = bmp
-    }
-  }
+  val context = LocalContext.current
 
   val borderModifier = if (item.isPlaying) {
     Modifier.border(
@@ -676,21 +505,19 @@ fun PlaylistTrackGridItem(
           .background(MaterialTheme.colorScheme.surfaceContainerHigh),
         contentAlignment = Alignment.Center,
       ) {
-        // Show actual thumbnail or fallback icon
-        thumbnail?.let { bmp ->
-          Image(
-            bitmap = bmp.asImageBitmap(),
+        Icon(
+          imageVector = Icons.Outlined.Movie,
+          contentDescription = null,
+          tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+          modifier = Modifier.size(32.dp),
+        )
+        if (!skipThumbnail) {
+          AsyncImage(
+            model = remember(item.uri, item.path) { buildPlaylistThumbnailRequest(context, item) },
+            imageLoader = imageLoader,
             contentDescription = "Thumbnail",
             modifier = Modifier.matchParentSize(),
             contentScale = ContentScale.Crop,
-          )
-        } ?: run {
-          // Movie icon as fallback placeholder
-          Icon(
-            imageVector = Icons.Outlined.Movie,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-            modifier = Modifier.size(32.dp),
           )
         }
 

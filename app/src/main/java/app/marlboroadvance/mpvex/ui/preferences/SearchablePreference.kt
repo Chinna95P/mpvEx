@@ -74,9 +74,37 @@ object SearchablePreferences {
                 screen = AppearancePreferencesScreen,
             ))
             add(SearchablePreference(
+                titleRes = R.string.pref_appearance_show_video_thumbnails_title,
+                summaryRes = R.string.pref_appearance_show_video_thumbnails_summary,
+                keywords = listOf("thumbnail", "thumbnails", "preview", "poster", "video"),
+                category = "Appearance",
+                screen = AppearancePreferencesScreen,
+            ))
+            add(SearchablePreference(
+                titleRes = R.string.pref_appearance_thumbnail_generation_title,
+                summaryRes = R.string.pref_appearance_thumbnail_generation_summary,
+                keywords = listOf("thumbnail", "generation", "frame", "hybrid", "first frame", "preview"),
+                category = "Appearance",
+                screen = AppearancePreferencesScreen,
+            ))
+            add(SearchablePreference(
+                titleRes = R.string.pref_gesture_tap_thumbnail_to_select_title,
+                summaryRes = R.string.pref_gesture_tap_thumbnail_to_select_summary,
+                keywords = listOf("thumbnail", "selection", "select", "tap", "gesture"),
+                category = "Appearance",
+                screen = AppearancePreferencesScreen,
+            ))
+            add(SearchablePreference(
                 titleRes = R.string.pref_appearance_show_network_thumbnails_title,
                 summaryRes = R.string.pref_appearance_show_network_thumbnails_summary,
                 keywords = listOf("network", "thumbnail", "stream", "preview", "images"),
+                category = "Appearance",
+                screen = AppearancePreferencesScreen,
+            ))
+            add(SearchablePreference(
+                titleRes = R.string.pref_clear_thumbnail_cache_title,
+                summaryRes = R.string.pref_clear_thumbnail_cache_summary,
+                keywords = listOf("thumbnail", "cache", "clear", "delete", "reset"),
                 category = "Appearance",
                 screen = AppearancePreferencesScreen,
             ))

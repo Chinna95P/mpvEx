@@ -23,6 +23,7 @@ object TreeViewScanner {
     // Smart cache with short TTL (30 seconds)
     private var cachedTreeViewData: Map<String, FolderData>? = null
     private var cacheTimestamp: Long = 0
+    private var cacheOptionsKey: String? = null
     private const val CACHE_TTL_MS = 10_000L // 10 seconds for faster refresh
     
     /**
@@ -31,6 +32,7 @@ object TreeViewScanner {
     fun clearCache() {
         cachedTreeViewData = null
         cacheTimestamp = 0
+        cacheOptionsKey = null
     }
     
     /**
@@ -61,9 +63,10 @@ object TreeViewScanner {
      */
     suspend fun getFoldersInDirectory(
         context: Context,
-        parentPath: String
+        parentPath: String,
+        options: MediaScanOptions = MediaScanOptions()
     ): List<FolderData> = withContext(Dispatchers.IO) {
-        val allFolders = getOrBuildTreeViewData(context)
+        val allFolders = getOrBuildTreeViewData(context, options)
         
         // Filter for direct children only
         allFolders.values.filter { folder ->
@@ -78,9 +81,10 @@ object TreeViewScanner {
      */
     suspend fun getFolderDataRecursive(
         context: Context,
-        folderPath: String
+        folderPath: String,
+        options: MediaScanOptions = MediaScanOptions()
     ): FolderData? = withContext(Dispatchers.IO) {
-        val allFolders = getOrBuildTreeViewData(context)
+        val allFolders = getOrBuildTreeViewData(context, options)
         
         // First try exact match
         allFolders[folderPath]?.let { return@withContext it }
@@ -132,23 +136,25 @@ object TreeViewScanner {
      * Get or build tree view data with smart caching
      */
     private suspend fun getOrBuildTreeViewData(
-        context: Context
+        context: Context,
+        options: MediaScanOptions
     ): Map<String, FolderData> = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         
         // Return cached data if still valid
         cachedTreeViewData?.let { cached ->
-            if (now - cacheTimestamp < CACHE_TTL_MS) {
+            if (now - cacheTimestamp < CACHE_TTL_MS && cacheOptionsKey == options.cacheKey) {
                 return@withContext cached
             }
         }
         
         // Build fresh data
-        val data = buildTreeViewData(context)
+        val data = buildTreeViewData(context, options)
         
         // Update cache
         cachedTreeViewData = data
         cacheTimestamp = now
+        cacheOptionsKey = options.cacheKey
         
         data
     }
@@ -157,15 +163,17 @@ object TreeViewScanner {
      * Build tree view data (no caching)
      */
     private suspend fun buildTreeViewData(
-        context: Context
+        context: Context,
+        options: MediaScanOptions
     ): Map<String, FolderData> = withContext(Dispatchers.IO) {
         val allFolders = mutableMapOf<String, FolderData>()
+        val noMediaPathFilter = NoMediaPathFilter(options)
         
         // Step 1: Scan MediaStore with recursive counts
-        scanMediaStoreRecursive(context, allFolders)
+        scanMediaStoreRecursive(context, allFolders, noMediaPathFilter)
         
-        // Step 2: Scan external volumes via filesystem (USB OTG, SD cards)
-        scanExternalVolumes(context, allFolders)
+        // Step 2: Scan filesystem for folders hidden from MediaStore.
+        scanFileSystemRoots(context, allFolders, options, noMediaPathFilter)
         
         // Step 3: Build parent folder hierarchy
         buildParentHierarchy(allFolders)
@@ -178,7 +186,8 @@ object TreeViewScanner {
      */
     private fun scanMediaStoreRecursive(
         context: Context,
-        folders: MutableMap<String, FolderData>
+        folders: MutableMap<String, FolderData>,
+        noMediaPathFilter: NoMediaPathFilter
     ) {
         val projection = arrayOf(
             MediaStore.Video.Media.DATA,
@@ -208,6 +217,7 @@ object TreeViewScanner {
                     val file = File(videoPath)
                     
                     if (!file.exists()) continue
+                    if (noMediaPathFilter.shouldExcludeDirectory(file.parentFile)) continue
                     
                     val folderPath = file.parent ?: continue
                     val size = cursor.getLong(sizeColumn)
@@ -265,32 +275,37 @@ object TreeViewScanner {
     /**
      * Scan external volumes (USB OTG, SD cards) via filesystem
      */
-    private fun scanExternalVolumes(
+    private fun scanFileSystemRoots(
         context: Context,
-        folders: MutableMap<String, FolderData>
+        folders: MutableMap<String, FolderData>,
+        options: MediaScanOptions,
+        noMediaPathFilter: NoMediaPathFilter
     ) {
         try {
-            val externalVolumes = StorageVolumeUtils.getExternalStorageVolumes(context)
-            
-            if (externalVolumes.isEmpty()) {
-                return
+            val rootsToScan = linkedSetOf<File>()
+
+            if (options.includeNoMediaFolders) {
+                rootsToScan += Environment.getExternalStorageDirectory()
             }
-            
-            for (volume in externalVolumes) {
+
+            for (volume in StorageVolumeUtils.getExternalStorageVolumes(context)) {
                 val volumePath = StorageVolumeUtils.getVolumePath(volume)
                 if (volumePath == null) {
                     continue
                 }
-                
-                val volumeDir = File(volumePath)
-                if (!volumeDir.exists() || !volumeDir.canRead()) {
+
+                rootsToScan += File(volumePath)
+            }
+
+            for (root in rootsToScan) {
+                if (!root.exists() || !root.canRead() || !root.isDirectory) {
                     continue
                 }
-                
-                scanDirectoryRecursive(volumeDir, folders, maxDepth = 20)
+
+                scanDirectoryRecursive(root, folders, maxDepth = 20, options = options, noMediaPathFilter = noMediaPathFilter)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "External volume scan error", e)
+            Log.e(TAG, "Filesystem tree scan error", e)
         }
     }
     
@@ -301,10 +316,13 @@ object TreeViewScanner {
         directory: File,
         folders: MutableMap<String, FolderData>,
         maxDepth: Int,
-        currentDepth: Int = 0
+        currentDepth: Int = 0,
+        options: MediaScanOptions,
+        noMediaPathFilter: NoMediaPathFilter
     ) {
         if (currentDepth >= maxDepth) return
         if (!directory.exists() || !directory.canRead() || !directory.isDirectory) return
+        if (FileFilterUtils.shouldSkipFolder(directory, options, noMediaPathFilter)) return
         
         try {
             val files = directory.listFiles() ?: return
@@ -316,11 +334,14 @@ object TreeViewScanner {
                 try {
                     when {
                         file.isDirectory -> {
-                            if (!FileFilterUtils.shouldSkipFolder(file)) {
+                            if (!FileFilterUtils.shouldSkipFolder(file, options, noMediaPathFilter)) {
                                 subdirectories.add(file)
                             }
                         }
                         file.isFile -> {
+                            if (FileFilterUtils.shouldSkipFile(file, options, noMediaPathFilter)) {
+                                continue
+                            }
                             val extension = file.extension.lowercase(Locale.getDefault())
                             if (FileTypeUtils.VIDEO_EXTENSIONS.contains(extension)) {
                                 videoFiles.add(file)
@@ -363,7 +384,7 @@ object TreeViewScanner {
             
             // Recurse into subdirectories
             for (subdir in subdirectories) {
-                scanDirectoryRecursive(subdir, folders, maxDepth, currentDepth + 1)
+                scanDirectoryRecursive(subdir, folders, maxDepth, currentDepth + 1, options, noMediaPathFilter)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Error scanning: ${directory.absolutePath}", e)

@@ -139,7 +139,7 @@ class FolderListViewModel(
     var hasCachedData = false
     val prefs =
       getApplication<Application>().getSharedPreferences("folder_cache", android.content.Context.MODE_PRIVATE)
-    val cachedJson = prefs.getString("folders", null)
+    val cachedJson = prefs.getString(currentFolderCacheKey(), null)
 
     if (cachedJson != null) {
       try {
@@ -167,13 +167,16 @@ class FolderListViewModel(
         val prefs =
           getApplication<Application>().getSharedPreferences("folder_cache", android.content.Context.MODE_PRIVATE)
         val json = serializeFoldersToJson(folders)
-        prefs.edit().putString("folders", json).apply()
+        prefs.edit().putString(currentFolderCacheKey(), json).apply()
         Log.d(TAG, "Saved ${folders.size} folders to cache")
       } catch (e: Exception) {
         Log.e(TAG, "Error saving folders to cache", e)
       }
     }
   }
+
+  private fun currentFolderCacheKey(): String =
+    "folders_${if (foldersPreferences.includeNoMediaFolders.get()) "with_nomedia" else "exclude_nomedia"}"
 
   private fun serializeFoldersToJson(folders: List<VideoFolder>): String {
     // Simple JSON serialization

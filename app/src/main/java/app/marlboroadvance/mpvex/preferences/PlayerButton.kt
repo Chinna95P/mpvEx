@@ -16,6 +16,7 @@ enum class PlayerButton(
   BOOKMARKS_CHAPTERS(Icons.Outlined.Bookmarks),
   PLAYBACK_SPEED(Icons.Outlined.Speed),
   DECODER(Icons.Default.DeveloperBoard),
+  HDR_MODE(Icons.Default.HdrOff),
   SCREEN_ROTATION(Icons.Outlined.ScreenRotation),
   FRAME_NAVIGATION(Icons.Default.Screenshot),
   VIDEO_ZOOM(Icons.Outlined.ZoomIn),
@@ -60,6 +61,7 @@ fun getPlayerButtonLabel(button: PlayerButton): String =
     PlayerButton.BOOKMARKS_CHAPTERS -> "Chapters / Bookmarks" // stringResource(R.string.btn_label_bookmarks)
     PlayerButton.PLAYBACK_SPEED -> "Playback Speed" // stringResource(R.string.btn_label_speed)
     PlayerButton.DECODER -> "Decoder" // stringResource(R.string.btn_label_decoder)
+    PlayerButton.HDR_MODE -> "HDR Screen Output"
     PlayerButton.SCREEN_ROTATION -> "Screen Rotation" // stringResource(R.string.btn_label_rotation)
     PlayerButton.FRAME_NAVIGATION -> "Frame Navigation" // stringResource(R.string.btn_label_frame_nav)
     PlayerButton.VIDEO_ZOOM -> "Video Zoom" // stringResource(R.string.btn_label_zoom)

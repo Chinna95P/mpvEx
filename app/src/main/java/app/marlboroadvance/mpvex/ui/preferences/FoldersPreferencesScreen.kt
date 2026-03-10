@@ -30,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -47,7 +48,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.marlboroadvance.mpvex.R
 import app.marlboroadvance.mpvex.domain.media.model.VideoFolder
-import app.marlboroadvance.mpvex.preferences.AppearancePreferences
 import app.marlboroadvance.mpvex.preferences.FoldersPreferences
 import app.marlboroadvance.mpvex.preferences.preference.collectAsState
 import app.marlboroadvance.mpvex.presentation.Screen
@@ -55,6 +55,7 @@ import app.marlboroadvance.mpvex.ui.browser.components.BrowserTopBar
 import app.marlboroadvance.mpvex.ui.browser.selection.SelectionState
 import app.marlboroadvance.mpvex.ui.browser.states.EmptyState
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
+import app.marlboroadvance.mpvex.utils.media.MediaLibraryEvents
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
@@ -71,6 +72,7 @@ object FoldersPreferencesScreen : Screen {
     val coroutineScope = rememberCoroutineScope()
 
     val blacklistedFolders by preferences.blacklistedFolders.collectAsState()
+    val includeNoMediaFolders by preferences.includeNoMediaFolders.collectAsState()
     var availableFolders by remember { mutableStateOf<List<VideoFolder>>(emptyList()) }
     var showAddDialog by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
@@ -130,6 +132,17 @@ object FoldersPreferencesScreen : Screen {
           .padding(16.dp),
       ) {
         if (!selectionState.isInSelectionMode) {
+          NoMediaPreferenceCard(
+            includeNoMediaFolders = includeNoMediaFolders,
+            onIncludeNoMediaFoldersChanged = { enabled ->
+              preferences.includeNoMediaFolders.set(enabled)
+              app.marlboroadvance.mpvex.repository.MediaFileRepository.clearCache()
+              MediaLibraryEvents.notifyChanged()
+            },
+          )
+
+          Spacer(modifier = Modifier.height(16.dp))
+
           Text(
             text = stringResource(R.string.pref_folders_summary),
             style = MaterialTheme.typography.bodyMedium,
@@ -256,6 +269,47 @@ object FoldersPreferencesScreen : Screen {
             Text(stringResource(R.string.generic_cancel))
           }
         },
+      )
+    }
+  }
+}
+
+@Composable
+private fun NoMediaPreferenceCard(
+  includeNoMediaFolders: Boolean,
+  onIncludeNoMediaFoldersChanged: (Boolean) -> Unit,
+) {
+  Card(
+    modifier = Modifier.fillMaxWidth(),
+    colors = CardDefaults.cardColors(
+      containerColor = MaterialTheme.colorScheme.surfaceVariant,
+    ),
+  ) {
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .clickable { onIncludeNoMediaFoldersChanged(!includeNoMediaFolders) }
+        .padding(16.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+      Column(modifier = Modifier.weight(1f)) {
+        Text(
+          text = stringResource(R.string.pref_folders_include_nomedia_title),
+          style = MaterialTheme.typography.titleMedium,
+          fontWeight = FontWeight.Bold,
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+          text = stringResource(R.string.pref_folders_include_nomedia_summary),
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+      }
+
+      Switch(
+        checked = includeNoMediaFolders,
+        onCheckedChange = onIncludeNoMediaFoldersChanged,
       )
     }
   }

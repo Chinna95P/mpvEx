@@ -29,6 +29,7 @@ class BrowserPreferences(
 
   // Visibility preferences for video card chips
   val showVideoThumbnails = preferenceStore.getBoolean("show_video_thumbnails", true)
+  val thumbnailMode = preferenceStore.getEnum("thumbnail_mode", ThumbnailMode.Smart)
   val showSizeChip = preferenceStore.getBoolean("show_size_chip", true)
   // Metadata-dependent chips (disabled by default for better performance)
   val showResolutionChip = preferenceStore.getBoolean("show_resolution_chip", false)
@@ -130,4 +131,21 @@ enum class MediaLayoutMode {
       LIST -> "List"
       GRID -> "Grid"
     }
+}
+
+enum class ThumbnailMode {
+  Smart,
+  FirstFrame,
+  OneThird,
+  Halfway,
+  ;
+
+  val displayName: String
+    get() =
+      when (this) {
+        Smart -> "Hybrid (33%)"
+        FirstFrame -> "First frame"
+        OneThird -> "Frame at 33%"
+        Halfway -> "Frame at 50%"
+      }
 }

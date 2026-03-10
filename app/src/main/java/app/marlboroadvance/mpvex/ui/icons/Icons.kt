@@ -106,6 +106,8 @@ object Icons {
     val Grain = AppIcon(R.drawable.materialsymbols_ic_grain_rounded_filled)
     val GridView = AppIcon(R.drawable.materialsymbols_ic_grid_view_rounded_filled)
     val Headset = AppIcon(R.drawable.materialsymbols_ic_headphones_rounded_filled)
+    val HdrOff = AppIcon(R.drawable.materialsymbols_ic_hdr_off_rounded_filled)
+    val HdrOn = AppIcon(R.drawable.materialsymbols_ic_hdr_on_rounded_filled)
     val History = AppIcon(R.drawable.materialsymbols_ic_history_2_rounded_filled)
     val Home = AppIcon(R.drawable.materialsymbols_ic_home_rounded_filled)
     val Info = AppIcon(R.drawable.materialsymbols_ic_info_rounded_filled)
@@ -256,6 +258,8 @@ object Icons {
     val Grain = Shared.Grain
     val GridView = Shared.GridView
     val Headset = Shared.Headset
+    val HdrOff = Shared.HdrOff
+    val HdrOn = Shared.HdrOn
     val Home = Shared.Home
     val KeyboardArrowDown = Shared.KeyboardArrowDown
     val KeyboardArrowUp = Shared.KeyboardArrowUp

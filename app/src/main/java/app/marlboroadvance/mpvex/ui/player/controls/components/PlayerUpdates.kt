@@ -30,6 +30,8 @@ import androidx.compose.ui.unit.dp
 import app.marlboroadvance.mpvex.R
 import app.marlboroadvance.mpvex.ui.theme.spacing
 
+private val tabularFigures = "tnum"
+
 @Composable
 fun PlayerUpdate(
   modifier: Modifier = Modifier,
@@ -66,13 +68,14 @@ fun TextPlayerUpdate(
   text: String,
   modifier: Modifier = Modifier,
 ) {
+  val stableTextStyle = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = tabularFigures)
   PlayerUpdate(modifier) {
     Text(
       text = text,
       fontWeight = FontWeight.Bold,
       textAlign = TextAlign.Center,
       color = MaterialTheme.colorScheme.onSurface,
-      style = MaterialTheme.typography.bodyMedium,
+      style = stableTextStyle,
     )
   }
 }
@@ -96,6 +99,7 @@ fun SeekPlayerUpdate(
   seekDelta: String,
   modifier: Modifier = Modifier,
 ) {
+  val stableTextStyle = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = tabularFigures)
   PlayerUpdate(modifier) {
     Row(
       verticalAlignment = Alignment.CenterVertically,
@@ -105,14 +109,14 @@ fun SeekPlayerUpdate(
         fontWeight = FontWeight.Bold,
         textAlign = TextAlign.Center,
         color = MaterialTheme.colorScheme.onSurface,
-        style = MaterialTheme.typography.bodyMedium,
+        style = stableTextStyle,
       )
       
       Text(
         text = " $seekDelta",
         fontWeight = FontWeight.Normal,
         textAlign = TextAlign.Center,
-        style = MaterialTheme.typography.bodyMedium,
+        style = stableTextStyle,
         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
       )
     }

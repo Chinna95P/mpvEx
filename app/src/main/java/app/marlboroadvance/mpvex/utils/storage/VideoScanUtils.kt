@@ -41,19 +41,25 @@ object VideoScanUtils {
      */
     suspend fun getVideosInFolder(
         context: Context,
-        folderPath: String
+        folderPath: String,
+        options: MediaScanOptions = MediaScanOptions(),
     ): List<Video> = withContext(Dispatchers.IO) {
         val videosMap = mutableMapOf<String, Video>()
-        
-        // Try MediaStore first (fast)
-        scanVideosFromMediaStore(context, folderPath, videosMap)
-        
-        // Fallback to filesystem if MediaStore returned nothing
+        val noMediaPathFilter = NoMediaPathFilter(options)
         val folder = File(folderPath)
-        if (folder.exists() && folder.canRead() && videosMap.isEmpty()) {
-            scanVideosFromFileSystem(context, folder, videosMap)
+
+        if (noMediaPathFilter.shouldExcludeDirectory(folder)) {
+            return@withContext emptyList()
         }
-        
+
+        // Try MediaStore first (fast)
+        scanVideosFromMediaStore(context, folderPath, videosMap, noMediaPathFilter)
+
+        // Fallback to filesystem if MediaStore returned nothing
+        if (folder.exists() && folder.canRead() && videosMap.isEmpty()) {
+            scanVideosFromFileSystem(context, folder, videosMap, options, noMediaPathFilter)
+        }
+
         videosMap.values.sortedBy { it.displayName.lowercase(Locale.getDefault()) }
     }
     
@@ -63,7 +69,8 @@ object VideoScanUtils {
     private fun scanVideosFromMediaStore(
         context: Context,
         folderPath: String,
-        videosMap: MutableMap<String, Video>
+        videosMap: MutableMap<String, Video>,
+        noMediaPathFilter: NoMediaPathFilter,
     ) {
         val projection = arrayOf(
             MediaStore.Video.Media._ID,
@@ -103,11 +110,12 @@ object VideoScanUtils {
                 while (cursor.moveToNext()) {
                     val path = cursor.getString(dataColumn)
                     val file = File(path)
-                    
+
                     // Only direct children
                     if (file.parent != folderPath) continue
                     if (!file.exists()) continue
-                    
+                    if (noMediaPathFilter.shouldExcludeDirectory(file.parentFile)) continue
+
                     val id = cursor.getLong(idColumn)
                     val displayName = cursor.getString(nameColumn)
                     val title = file.nameWithoutExtension
@@ -160,15 +168,18 @@ object VideoScanUtils {
     private fun scanVideosFromFileSystem(
         context: Context,
         folder: File,
-        videosMap: MutableMap<String, Video>
+        videosMap: MutableMap<String, Video>,
+        options: MediaScanOptions,
+        noMediaPathFilter: NoMediaPathFilter,
     ) {
         try {
             val files = folder.listFiles() ?: return
-            
+
             for (file in files) {
                 try {
                     if (!file.isFile) continue
-                    
+                    if (FileFilterUtils.shouldSkipFile(file, options, noMediaPathFilter)) continue
+
                     val extension = file.extension.lowercase(Locale.getDefault())
                     if (!FileTypeUtils.VIDEO_EXTENSIONS.contains(extension)) continue
                     
@@ -382,8 +393,12 @@ object FileFilterUtils {
     /**
      * Checks if a folder should be skipped during scanning
      */
-    fun shouldSkipFolder(folder: File): Boolean {
-        if (hasNoMediaFile(folder)) {
+    fun shouldSkipFolder(
+        folder: File,
+        options: MediaScanOptions = MediaScanOptions(),
+        noMediaPathFilter: NoMediaPathFilter = NoMediaPathFilter(options)
+    ): Boolean {
+        if (noMediaPathFilter.shouldExcludeDirectory(folder)) {
             return true
         }
 
@@ -395,8 +410,16 @@ object FileFilterUtils {
     /**
      * Checks if a file should be skipped during file listing
      */
-    fun shouldSkipFile(file: File): Boolean {
-        return file.name.startsWith(".")
+    fun shouldSkipFile(
+        file: File,
+        options: MediaScanOptions = MediaScanOptions(),
+        noMediaPathFilter: NoMediaPathFilter = NoMediaPathFilter(options)
+    ): Boolean {
+        if (file.name.startsWith(".")) {
+            return true
+        }
+
+        return noMediaPathFilter.shouldExcludeFile(file)
     }
 }
 

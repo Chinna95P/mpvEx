@@ -88,7 +88,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
+import app.marlboroadvance.mpvex.R
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -638,7 +640,7 @@ fun ButtonSlotCard(
                         actions = {
                             IconButton(onClick = { dismissAndSave() }) {
                                 Icon(
-                                    Icons.Filled.Check,
+                                    painter = painterResource(R.drawable.ic_material_symbols_check),
                                     contentDescription = "Done",
                                     tint = MaterialTheme.colorScheme.primary,
                                 )

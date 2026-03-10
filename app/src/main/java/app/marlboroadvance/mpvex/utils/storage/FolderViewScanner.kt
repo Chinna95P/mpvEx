@@ -24,6 +24,7 @@ object FolderViewScanner {
     // Smart cache with short TTL (10 seconds)
     private var cachedFolderList: List<VideoFolder>? = null
     private var cacheTimestamp: Long = 0
+    private var cacheOptionsKey: String? = null
     private const val CACHE_TTL_MS = 10_000L // 10 seconds for faster refresh
     
     /**
@@ -32,6 +33,7 @@ object FolderViewScanner {
     fun clearCache() {
         cachedFolderList = null
         cacheTimestamp = 0
+        cacheOptionsKey = null
     }
     
     /**
@@ -60,24 +62,28 @@ object FolderViewScanner {
      * Get all video folders for folder list view
      * Only shows folders with immediate video children (not recursive)
      */
-    suspend fun getAllVideoFolders(context: Context): List<VideoFolder> = withContext(Dispatchers.IO) {
+    suspend fun getAllVideoFolders(
+        context: Context,
+        options: MediaScanOptions = MediaScanOptions()
+    ): List<VideoFolder> = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         
         // Return cached data if still valid
         cachedFolderList?.let { cached ->
-            if (now - cacheTimestamp < CACHE_TTL_MS) {
+            if (now - cacheTimestamp < CACHE_TTL_MS && cacheOptionsKey == options.cacheKey) {
                 return@withContext cached
             }
         }
         
         // Build fresh data
         val allFolders = mutableMapOf<String, FolderData>()
+        val noMediaPathFilter = NoMediaPathFilter(options)
         
         // Step 1: Scan MediaStore (fast, covers most cases)
-        scanMediaStoreImmediateChildren(context, allFolders)
+        scanMediaStoreImmediateChildren(context, allFolders, noMediaPathFilter)
         
-        // Step 2: Scan external volumes via filesystem (USB OTG, SD cards)
-        scanExternalVolumes(context, allFolders)
+        // Step 2: Scan filesystem for folders that MediaStore won't expose.
+        scanFileSystemRoots(context, allFolders, options, noMediaPathFilter)
         
         // Convert to VideoFolder list
         val result = allFolders.values.map { data ->
@@ -95,6 +101,7 @@ object FolderViewScanner {
         // Update cache
         cachedFolderList = result
         cacheTimestamp = now
+        cacheOptionsKey = options.cacheKey
         
         result
     }
@@ -104,7 +111,8 @@ object FolderViewScanner {
      */
     private fun scanMediaStoreImmediateChildren(
         context: Context,
-        folders: MutableMap<String, FolderData>
+        folders: MutableMap<String, FolderData>,
+        noMediaPathFilter: NoMediaPathFilter
     ) {
         val projection = arrayOf(
             MediaStore.Video.Media.DATA,
@@ -134,6 +142,7 @@ object FolderViewScanner {
                     val file = File(videoPath)
                     
                     if (!file.exists()) continue
+                    if (noMediaPathFilter.shouldExcludeDirectory(file.parentFile)) continue
                     
                     val folderPath = file.parent ?: continue
                     val size = cursor.getLong(sizeColumn)
@@ -185,32 +194,37 @@ object FolderViewScanner {
     /**
      * Scan external volumes (USB OTG, SD cards) via filesystem
      */
-    private fun scanExternalVolumes(
+    private fun scanFileSystemRoots(
         context: Context,
-        folders: MutableMap<String, FolderData>
+        folders: MutableMap<String, FolderData>,
+        options: MediaScanOptions,
+        noMediaPathFilter: NoMediaPathFilter
     ) {
         try {
-            val externalVolumes = StorageVolumeUtils.getExternalStorageVolumes(context)
-            
-            if (externalVolumes.isEmpty()) {
-                return
+            val rootsToScan = linkedSetOf<File>()
+
+            if (options.includeNoMediaFolders) {
+                rootsToScan += Environment.getExternalStorageDirectory()
             }
-            
-            for (volume in externalVolumes) {
+
+            for (volume in StorageVolumeUtils.getExternalStorageVolumes(context)) {
                 val volumePath = StorageVolumeUtils.getVolumePath(volume)
                 if (volumePath == null) {
                     continue
                 }
-                
-                val volumeDir = File(volumePath)
-                if (!volumeDir.exists() || !volumeDir.canRead()) {
+
+                rootsToScan += File(volumePath)
+            }
+
+            for (root in rootsToScan) {
+                if (!root.exists() || !root.canRead() || !root.isDirectory) {
                     continue
                 }
-                
-                scanDirectoryRecursive(volumeDir, folders, maxDepth = 20)
+
+                scanDirectoryRecursive(root, folders, maxDepth = 20, options = options, noMediaPathFilter = noMediaPathFilter)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "External volume scan error", e)
+            Log.e(TAG, "Filesystem folder scan error", e)
         }
     }
     
@@ -221,10 +235,13 @@ object FolderViewScanner {
         directory: File,
         folders: MutableMap<String, FolderData>,
         maxDepth: Int,
-        currentDepth: Int = 0
+        currentDepth: Int = 0,
+        options: MediaScanOptions,
+        noMediaPathFilter: NoMediaPathFilter
     ) {
         if (currentDepth >= maxDepth) return
         if (!directory.exists() || !directory.canRead() || !directory.isDirectory) return
+        if (FileFilterUtils.shouldSkipFolder(directory, options, noMediaPathFilter)) return
         
         try {
             val files = directory.listFiles() ?: return
@@ -236,11 +253,14 @@ object FolderViewScanner {
                 try {
                     when {
                         file.isDirectory -> {
-                            if (!FileFilterUtils.shouldSkipFolder(file)) {
+                            if (!FileFilterUtils.shouldSkipFolder(file, options, noMediaPathFilter)) {
                                 subdirectories.add(file)
                             }
                         }
                         file.isFile -> {
+                            if (FileFilterUtils.shouldSkipFile(file, options, noMediaPathFilter)) {
+                                continue
+                            }
                             val extension = file.extension.lowercase(Locale.getDefault())
                             if (FileTypeUtils.VIDEO_EXTENSIONS.contains(extension)) {
                                 videoFiles.add(file)
@@ -283,7 +303,7 @@ object FolderViewScanner {
             
             // Recurse into subdirectories
             for (subdir in subdirectories) {
-                scanDirectoryRecursive(subdir, folders, maxDepth, currentDepth + 1)
+                scanDirectoryRecursive(subdir, folders, maxDepth, currentDepth + 1, options, noMediaPathFilter)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Error scanning: ${directory.absolutePath}", e)

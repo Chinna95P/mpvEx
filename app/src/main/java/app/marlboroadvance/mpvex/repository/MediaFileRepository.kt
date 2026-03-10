@@ -9,14 +9,18 @@ import app.marlboroadvance.mpvex.domain.browser.FileSystemItem
 import app.marlboroadvance.mpvex.domain.browser.PathComponent
 import app.marlboroadvance.mpvex.domain.media.model.Video
 import app.marlboroadvance.mpvex.domain.media.model.VideoFolder
+import app.marlboroadvance.mpvex.preferences.FoldersPreferences
 import app.marlboroadvance.mpvex.utils.storage.FolderViewScanner
 import app.marlboroadvance.mpvex.utils.storage.TreeViewScanner
 import app.marlboroadvance.mpvex.utils.storage.VideoScanUtils
 import app.marlboroadvance.mpvex.utils.storage.StorageVolumeUtils
 import app.marlboroadvance.mpvex.utils.storage.FileTypeUtils
+import app.marlboroadvance.mpvex.utils.storage.MediaScanOptions
 import app.marlboroadvance.mpvex.utils.media.MediaInfoOps
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
 import java.io.File
 import java.util.Locale
 import kotlin.math.log10
@@ -34,8 +38,14 @@ import kotlin.math.pow
  * - Path operations
  * - Storage volume detection
  */
-object MediaFileRepository {
+object MediaFileRepository : KoinComponent {
   private const val TAG = "MediaFileRepository"
+  private val foldersPreferences: FoldersPreferences by inject()
+
+  private fun currentScanOptions(): MediaScanOptions =
+    MediaScanOptions(
+      includeNoMediaFolders = foldersPreferences.includeNoMediaFolders.get(),
+    )
 
   /**
    * Clears all caches
@@ -59,7 +69,7 @@ object MediaFileRepository {
   ): List<VideoFolder> =
     withContext(Dispatchers.IO) {
       try {
-        FolderViewScanner.getAllVideoFolders(context)
+        FolderViewScanner.getAllVideoFolders(context, currentScanOptions())
       } catch (e: Exception) {
         Log.e(TAG, "Error scanning for video folders", e)
         emptyList()
@@ -99,7 +109,7 @@ object MediaFileRepository {
   ): List<Video> =
     withContext(Dispatchers.IO) {
       try {
-        VideoScanUtils.getVideosInFolder(context, bucketId)
+        VideoScanUtils.getVideosInFolder(context, bucketId, currentScanOptions())
       } catch (e: Exception) {
         Log.e(TAG, "Error getting videos for bucket $bucketId", e)
         emptyList()
@@ -326,7 +336,8 @@ object MediaFileRepository {
         val items = mutableListOf<FileSystemItem>()
 
         // Get folders using TreeViewScanner (instant from cache)
-        val folders = TreeViewScanner.getFoldersInDirectory(context, path)
+        val scanOptions = currentScanOptions()
+        val folders = TreeViewScanner.getFoldersInDirectory(context, path, scanOptions)
         folders.forEach { folderData ->
           items.add(
             FileSystemItem.Folder(
@@ -342,7 +353,7 @@ object MediaFileRepository {
         }
 
         // Get videos in current directory
-        val videos = VideoScanUtils.getVideosInFolder(context, path)
+        val videos = VideoScanUtils.getVideosInFolder(context, path, scanOptions)
         videos.forEach { video ->
           items.add(
             FileSystemItem.VideoFile(
@@ -378,7 +389,7 @@ object MediaFileRepository {
           val primaryPath = primaryStorage.absolutePath
           
           // Get recursive count for this storage root
-          val folderData = TreeViewScanner.getFolderDataRecursive(context, primaryPath)
+          val folderData = TreeViewScanner.getFolderDataRecursive(context, primaryPath, currentScanOptions())
           
           roots.add(
             FileSystemItem.Folder(
@@ -403,7 +414,7 @@ object MediaFileRepository {
               val volumeName = volume.getDescription(context)
               
               // Get recursive count for this storage root
-              val folderData = TreeViewScanner.getFolderDataRecursive(context, volumePath)
+              val folderData = TreeViewScanner.getFolderDataRecursive(context, volumePath, currentScanOptions())
               
               roots.add(
                 FileSystemItem.Folder(

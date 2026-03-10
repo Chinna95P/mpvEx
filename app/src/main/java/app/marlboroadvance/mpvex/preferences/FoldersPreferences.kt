@@ -10,4 +10,5 @@ class FoldersPreferences(
 ) {
   // Set of folder paths that should be hidden from the folder list
   val blacklistedFolders = preferenceStore.getStringSet("blacklisted_folders", emptySet())
+  val includeNoMediaFolders = preferenceStore.getBoolean("include_nomedia_folders", false)
 }

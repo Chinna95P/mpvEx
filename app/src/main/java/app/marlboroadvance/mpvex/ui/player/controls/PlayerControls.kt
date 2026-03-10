@@ -528,7 +528,7 @@ fun PlayerControls(
               val zoomPercentage = (videoZoom * 100).toInt()
               TextPlayerUpdate(
                 text = String.format("Zoom:%3d%%", zoomPercentage), 
-                modifier = Modifier, // Let content size determine width
+                modifier = Modifier.widthIn(min = 112.dp),
               )
             }
 
@@ -537,7 +537,7 @@ fun PlayerControls(
               SeekPlayerUpdate(
                 currentTime = seekUpdate.currentTime,
                 seekDelta = "[${seekUpdate.seekDelta}]",
-                modifier = Modifier, // Let content size determine width
+                modifier = Modifier.widthIn(min = 168.dp),
               )
             }
 
@@ -1046,7 +1046,7 @@ fun PlayerControls(
                 if (isPortrait) {
                   bottom.linkTo(playerPauseButton.top, spacing.medium)
                 } else {
-                  bottom.linkTo(parent.bottom, spacing.small)
+                  bottom.linkTo(parent.bottom, spacing.medium)
                 }
                 start.linkTo(parent.start, spacing.large)
                 end.linkTo(parent.end, spacing.large)
@@ -1246,7 +1246,7 @@ fun PlayerControls(
                   end.linkTo(parent.end, spacing.large)
                   width = Dimension.fillToConstraints
                 } else {
-                  bottom.linkTo(seekbar.top, spacing.small)
+                  bottom.linkTo(seekbar.top, spacing.medium)
                   end.linkTo(parent.end, spacing.large)
                 }
               },
@@ -1320,7 +1320,7 @@ fun PlayerControls(
                 }
               )
               .constrainAs(bottomLeftControls) {
-                bottom.linkTo(seekbar.top, spacing.small)
+                bottom.linkTo(seekbar.top, spacing.medium)
                 start.linkTo(parent.start, spacing.large)
                 width = Dimension.fillToConstraints
                 end.linkTo(bottomRightControls.start, spacing.small)

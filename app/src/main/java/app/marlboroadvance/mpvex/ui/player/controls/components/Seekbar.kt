@@ -121,6 +121,7 @@ fun SeekbarWithTimers(
         duration = duration,
         chapters = chapters,
         paused = paused,
+        isPortrait = isPortrait,
         isUserInteracting = isUserInteracting,
         seekbarStyle = seekbarStyle,
         loopStart = loopStart,
@@ -179,6 +180,7 @@ fun SeekbarWithTimers(
         duration = duration,
         chapters = chapters,
         paused = paused,
+        isPortrait = isPortrait,
         isUserInteracting = isUserInteracting,
         seekbarStyle = seekbarStyle,
         loopStart = loopStart,
@@ -211,6 +213,7 @@ private fun SeekbarContent(
   duration: Float,
   chapters: ImmutableList<Segment>,
   paused: Boolean,
+  isPortrait: Boolean,
   isUserInteracting: Boolean,
   seekbarStyle: SeekbarStyle,
   loopStart: Float?,
@@ -223,8 +226,8 @@ private fun SeekbarContent(
   animatedPosition: Animatable<Float, *>,
   modifier: Modifier = Modifier
 ) {
-  var userPosition by remember(position) { mutableFloatStateOf(position) } // Local state for immediate feedback
-  
+  val touchAreaHeight = if (isPortrait) 64.dp else 52.dp
+
   Box(
     modifier = modifier,
     contentAlignment = Alignment.Center,
@@ -233,7 +236,7 @@ private fun SeekbarContent(
     Box(
       modifier = Modifier
         .fillMaxWidth()
-        .height(64.dp) // Larger touch area
+        .height(touchAreaHeight)
         .pointerInput(Unit) {
           detectTapGestures(
             onTap = { offset ->

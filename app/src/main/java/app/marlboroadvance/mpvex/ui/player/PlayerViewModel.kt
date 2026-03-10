@@ -54,9 +54,11 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import app.marlboroadvance.mpvex.ui.preferences.CustomButton
 import java.io.File
+import java.security.MessageDigest
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 import app.marlboroadvance.mpvex.preferences.AdvancedPreferences
+import app.marlboroadvance.mpvex.preferences.DecoderPreferences
 import kotlin.properties.ReadOnlyProperty
 import kotlin.reflect.KProperty
 
@@ -92,6 +94,7 @@ class PlayerViewModel(
   private val audioPreferences: AudioPreferences by inject()
   private val subtitlesPreferences: SubtitlesPreferences by inject()
   private val advancedPreferences: AdvancedPreferences by inject()
+  private val decoderPreferences: DecoderPreferences by inject()
   private val json: Json by inject()
   private val playbackStateDao: app.marlboroadvance.mpvex.database.dao.PlaybackStateDao by inject()
   private val wyzieRepository: WyzieSearchRepository by inject()
@@ -327,6 +330,9 @@ class PlayerViewModel(
   private val _isVerticalFlipped = MutableStateFlow(false)
   val isVerticalFlipped: StateFlow<Boolean> = _isVerticalFlipped.asStateFlow()
 
+  private val _isHdrScreenOutputEnabled = MutableStateFlow(isHdrScreenOutputAvailable() && decoderPreferences.hdrScreenOutput.get())
+  val isHdrScreenOutputEnabled: StateFlow<Boolean> = _isHdrScreenOutputEnabled.asStateFlow()
+
   // ==================== Ambience Mode ======================================
   private val _isAmbientEnabled = MutableStateFlow(playerPreferences.isAmbientEnabled.get())
   val isAmbientEnabled: StateFlow<Boolean> = _isAmbientEnabled.asStateFlow()
@@ -455,6 +461,7 @@ class PlayerViewModel(
   @Volatile
   private var customButtonsScriptPath: String? = null
   private val customButtonsLoadedFlagProperty = "user-data/mpvex/custombuttons_loaded"
+  private val customButtonsVersionProperty = "user-data/mpvex/custombuttons_version"
 
   fun onMpvCoreInitialized() {
     isMpvReadyForCustomButtons = true
@@ -469,11 +476,12 @@ class PlayerViewModel(
         if (!advancedPreferences.enableLuaScripts.get()) {
           _customButtons.value = buttons
           customButtonsScriptPath = null
-          runCatching { MPVLib.setPropertyString(customButtonsLoadedFlagProperty, "0") }
+          deleteCustomButtonsScriptFile()
+          deactivateCustomButtonsScript()
           return@launch
         }
 
-        val scriptContent = buildString {
+        val rawScriptContent = buildString {
           val jsonString = playerPreferences.customButtons.get()
           if (jsonString.isNotBlank()) {
             try {
@@ -500,15 +508,13 @@ class PlayerViewModel(
                }
             }
           }
-
-          if (buttons.isNotEmpty()) {
-            append("mp.set_property_native('$customButtonsLoadedFlagProperty', '1')\n")
-          }
         }
 
         _customButtons.value = buttons
 
-        if (scriptContent.isNotEmpty()) {
+        if (rawScriptContent.isNotEmpty()) {
+          val scriptVersion = rawScriptContent.md5()
+          val scriptContent = buildCustomButtonsScript(rawScriptContent, scriptVersion)
           val scriptsDir = File(host.context.filesDir, "scripts")
           if (!scriptsDir.exists()) scriptsDir.mkdirs()
           
@@ -526,7 +532,8 @@ class PlayerViewModel(
           }
         } else {
           customButtonsScriptPath = null
-          runCatching { MPVLib.setPropertyString(customButtonsLoadedFlagProperty, "0") }
+          deleteCustomButtonsScriptFile()
+          deactivateCustomButtonsScript()
         }
       } catch (e: Exception) {
         android.util.Log.e("PlayerViewModel", "Error setting up custom buttons", e)
@@ -576,6 +583,40 @@ class PlayerViewModel(
     }
   }
 
+  private fun deactivateCustomButtonsScript() {
+    runCatching {
+      MPVLib.setPropertyString(customButtonsLoadedFlagProperty, "0")
+      MPVLib.setPropertyString(customButtonsVersionProperty, "")
+    }
+  }
+
+  private fun deleteCustomButtonsScriptFile() {
+    runCatching {
+      File(host.context.filesDir, "scripts/custombuttons.lua").takeIf { it.exists() }?.delete()
+    }
+  }
+
+  private fun buildCustomButtonsScript(
+    body: String,
+    version: String,
+  ): String =
+    buildString {
+      appendLine("local loaded_flag_property = '$customButtonsLoadedFlagProperty'")
+      appendLine("local version_property = '$customButtonsVersionProperty'")
+      appendLine("local instance_version = '$version'")
+      appendLine("if mp.get_property_native(version_property) == instance_version then")
+      appendLine("    mp.set_property_native(loaded_flag_property, '1')")
+      appendLine("    return")
+      appendLine("end")
+      appendLine("mp.set_property_native(version_property, instance_version)")
+      appendLine("mp.set_property_native(loaded_flag_property, '1')")
+      appendLine("local function is_active_instance()")
+      appendLine("    return mp.get_property_native(version_property) == instance_version")
+      appendLine("end")
+      appendLine()
+      append(body)
+    }
+
   fun callCustomButton(id: String) {
     val safeId = id.replace("-", "_")
     MPVLib.command("script-message", "call_button_$safeId")
@@ -610,6 +651,7 @@ class PlayerViewModel(
         append(
           """
           function button_${safeId}()
+              if not is_active_instance() then return end
               ${command}
           end
           mp.register_script_message('call_button_${safeId}', button_${safeId})
@@ -623,6 +665,7 @@ class PlayerViewModel(
         append(
           """
           function button_long_${safeId}()
+              if not is_active_instance() then return end
               ${longPressCommand}
           end
           mp.register_script_message('call_button_long_${safeId}', button_long_${safeId})
@@ -1255,25 +1298,38 @@ class PlayerViewModel(
   }
 
   fun changeVolumeBy(change: Int) {
-    val mpvVolume = MPVLib.getPropertyInt("volume")
+    val currentSystemVolume = syncCurrentSystemVolume()
+    val mpvVolume = MPVLib.getPropertyInt("volume") ?: 100
     val absoluteMaxVolume = volumeBoostCap ?: (audioPreferences.volumeBoostCap.get() + 100)
 
-    if (absoluteMaxVolume > 100 && currentVolume.value == maxVolume) {
+    if (currentSystemVolume < maxVolume && mpvVolume > 100) {
+      changeMPVVolumeTo(100)
+    }
+
+    if (absoluteMaxVolume > 100 && currentSystemVolume == maxVolume) {
       if (mpvVolume == 100 && change < 0) {
-        changeVolumeTo(currentVolume.value + change)
+        changeVolumeTo(currentSystemVolume + change)
       }
-      val finalMPVVolume = (mpvVolume?.plus(change))?.coerceAtLeast(100) ?: 100
+      val finalMPVVolume = (mpvVolume + change).coerceAtLeast(100)
       if (finalMPVVolume in 100..absoluteMaxVolume) {
         return changeMPVVolumeTo(finalMPVVolume)
       }
     }
-    changeVolumeTo(currentVolume.value + change)
+
+    changeVolumeTo(currentSystemVolume + change)
   }
 
   fun changeVolumeTo(volume: Int) {
     val newVolume = volume.coerceIn(0..maxVolume)
     host.audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVolume, 0)
-    currentVolume.value = newVolume
+    currentVolume.value = syncCurrentSystemVolume()
+
+    if (currentVolume.value < maxVolume) {
+      val currentMpvVolume = MPVLib.getPropertyInt("volume") ?: 100
+      if (currentMpvVolume > 100) {
+        changeMPVVolumeTo(100)
+      }
+    }
   }
 
   fun changeMPVVolumeTo(volume: Int) {
@@ -1281,8 +1337,15 @@ class PlayerViewModel(
   }
 
   fun displayVolumeSlider() {
+    syncCurrentSystemVolume()
     isVolumeSliderShown.value = true
     volumeSliderTimestamp.value = System.currentTimeMillis()
+  }
+
+  private fun syncCurrentSystemVolume(): Int {
+    val systemVolume = host.audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+    currentVolume.value = systemVolume
+    return systemVolume
   }
 
   // ==================== Video Aspect ====================
@@ -2199,6 +2262,34 @@ class PlayerViewModel(
     playerUpdate.value = PlayerUpdates.ShowText(if (newState) "V-Flip On" else "V-Flip Off")
   }
 
+  fun toggleHdrScreenOutput() {
+    if (!isHdrScreenOutputAvailable()) {
+      playerUpdate.value = PlayerUpdates.ShowText("HDR screen output needs GPU Next + Vulkan")
+      return
+    }
+
+    val enabled = !_isHdrScreenOutputEnabled.value
+    _isHdrScreenOutputEnabled.value = enabled
+    decoderPreferences.hdrScreenOutput.set(enabled)
+    applyHdrScreenOutput(enabled)
+    playerUpdate.value = PlayerUpdates.ShowText(if (enabled) "HDR Screen Output: ON" else "HDR Screen Output: OFF")
+  }
+
+  private fun isHdrScreenOutputAvailable(): Boolean =
+    decoderPreferences.useVulkan.get() && decoderPreferences.gpuNext.get()
+
+  private fun applyHdrScreenOutput(enabled: Boolean) {
+    val hintValue = if (enabled && isHdrScreenOutputAvailable()) "yes" else "no"
+    runCatching {
+      MPVLib.setOptionString("target-colorspace-hint-mode", "source")
+      MPVLib.setOptionString("target-colorspace-hint", hintValue)
+      MPVLib.setPropertyString("target-colorspace-hint-mode", "source")
+      MPVLib.setPropertyString("target-colorspace-hint", hintValue)
+    }.onFailure { e ->
+      Log.e(TAG, "Error applying HDR screen output: $hintValue", e)
+    }
+  }
+
   // ==================== Ambient Mode Integration ====================
 
   fun toggleAmbientMode() {
@@ -2789,4 +2880,9 @@ fun <T> Flow<T>.collectAsState(
     thisRef: Any?,
     property: KProperty<*>,
   ) = value
+}
+
+private fun String.md5(): String {
+  val digest = MessageDigest.getInstance("MD5").digest(toByteArray())
+  return digest.joinToString("") { byte -> "%02x".format(byte) }
 }

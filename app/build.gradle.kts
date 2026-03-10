@@ -190,6 +190,8 @@ dependencies {
   implementation(libs.mediasession)
   implementation(libs.androidx.documentfile)
   implementation(libs.saveable)
+  implementation("io.coil-kt.coil3:coil:3.4.0")
+  implementation("io.coil-kt.coil3:coil-compose:3.4.0")
 
   implementation(platform(libs.koin.bom))
   implementation(libs.bundles.koin)

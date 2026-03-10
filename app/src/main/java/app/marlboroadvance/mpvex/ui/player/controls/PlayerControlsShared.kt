@@ -279,6 +279,20 @@ fun RenderPlayerButton(
       }
     }
 
+    PlayerButton.HDR_MODE -> {
+      val isHdrEnabled by viewModel.isHdrScreenOutputEnabled.collectAsState()
+      ControlsButton(
+        icon = if (isHdrEnabled) Icons.Default.HdrOn else Icons.Default.HdrOff,
+        onClick = viewModel::toggleHdrScreenOutput,
+        color = if (hideBackground) {
+          if (isHdrEnabled) MaterialTheme.colorScheme.primary else controlColor
+        } else {
+          if (isHdrEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+        },
+        modifier = Modifier.size(buttonSize),
+      )
+    }
+
     PlayerButton.SCREEN_ROTATION -> {
       ControlsButton(
         icon = Icons.Default.ScreenRotation,

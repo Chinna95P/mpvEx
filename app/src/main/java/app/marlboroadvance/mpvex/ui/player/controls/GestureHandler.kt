@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
@@ -919,6 +920,12 @@ fun DoubleTapToSeekOvals(
   val gesturePreferences = koinInject<GesturePreferences>()
   val doubleTapSeekAreaWidth by gesturePreferences.doubleTapSeekAreaWidth.collectAsState()
   val seekAreaFraction = doubleTapSeekAreaWidth / 100f
+  val seekOverlayTextStyle =
+    MaterialTheme.typography.headlineSmall.copy(
+      fontSize = 22.sp,
+      fontWeight = FontWeight.Bold,
+      fontFeatureSettings = "tnum",
+    )
   
   val alpha by animateFloatAsState(if (amount == 0) 0f else 0.2f, label = "double_tap_animation_alpha")
 
@@ -972,18 +979,16 @@ fun DoubleTapToSeekOvals(
                     CombiningChevronsAnimation(isRight = false, trigger = amount)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "- ${abs(amount)}",
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold,
+                        text = String.format("%+3d", amount),
+                        style = seekOverlayTextStyle,
                         textAlign = TextAlign.Center,
                         color = Color.White,
                         modifier = Modifier.scale(scale)
                     )
                 } else {
                     Text(
-                        text = "+ ${abs(amount)}",
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold,
+                        text = String.format("%+3d", amount),
+                        style = seekOverlayTextStyle,
                         textAlign = TextAlign.Center,
                         color = Color.White,
                         modifier = Modifier.scale(scale)
