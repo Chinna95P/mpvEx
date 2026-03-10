@@ -331,6 +331,9 @@ class PlayerViewModel(
   private val _isAmbientEnabled = MutableStateFlow(playerPreferences.isAmbientEnabled.get())
   val isAmbientEnabled: StateFlow<Boolean> = _isAmbientEnabled.asStateFlow()
 
+  private val _ambientVisualMode = MutableStateFlow(playerPreferences.ambientVisualMode.get())
+  val ambientVisualMode: StateFlow<AmbientVisualMode> = _ambientVisualMode.asStateFlow()
+
   private val _ambientBlurSamples = MutableStateFlow(playerPreferences.ambientBlurSamples.get())
   val ambientBlurSamples: StateFlow<Int> = _ambientBlurSamples.asStateFlow()
 
@@ -360,6 +363,15 @@ class PlayerViewModel(
 
   private val _ambientOpacity = MutableStateFlow(playerPreferences.ambientOpacity.get())
   val ambientOpacity: StateFlow<Float> = _ambientOpacity.asStateFlow()
+
+  private val _frameExtendStrength = MutableStateFlow(playerPreferences.ambientExtendStrength.get())
+  val frameExtendStrength: StateFlow<Float> = _frameExtendStrength.asStateFlow()
+
+  private val _frameExtendDetailProtection = MutableStateFlow(playerPreferences.ambientExtendDetailProtection.get())
+  val frameExtendDetailProtection: StateFlow<Float> = _frameExtendDetailProtection.asStateFlow()
+
+  private val _frameExtendGlowMix = MutableStateFlow(playerPreferences.ambientExtendGlowMix.get())
+  val frameExtendGlowMix: StateFlow<Float> = _frameExtendGlowMix.asStateFlow()
 
   private var lastAmbientScaleX = -1.0
   private var lastAmbientScaleY = -1.0
@@ -2266,6 +2278,18 @@ class PlayerViewModel(
     }
   }
 
+  fun updateAmbientVisualMode(mode: AmbientVisualMode) {
+    if (_ambientVisualMode.value == mode) return
+
+    _ambientVisualMode.value = mode
+    playerPreferences.ambientVisualMode.set(mode)
+
+    if (_isAmbientEnabled.value) {
+      playerUpdate.value = PlayerUpdates.ShowText("Ambient Style: ${mode.label}")
+      scheduleAmbientUpdate(75)
+    }
+  }
+
   fun updateAmbientParams(
     blurSamples: Int = _ambientBlurSamples.value,
     maxRadius: Float = _ambientMaxRadius.value,
@@ -2301,41 +2325,123 @@ class PlayerViewModel(
     playerPreferences.ambientFadeCurve.set(fadeCurve)
     playerPreferences.ambientOpacity.set(opacity)
 
-    // Debounce shader re-injection to avoid excessive GPU reloads
-    if (_isAmbientEnabled.value) {
-      ambientDebounceJob?.cancel()
-      ambientDebounceJob = viewModelScope.launch {
-        delay(150)
-        updateAmbientStretch()
-      }
-    }
+    scheduleAmbientUpdate()
   }
 
   /** Fast profile — low GPU cost, still visually solid. */
+  fun updateFrameExtendParams(
+    extendStrength: Float = _frameExtendStrength.value,
+    detailProtection: Float = _frameExtendDetailProtection.value,
+    glowMix: Float = _frameExtendGlowMix.value,
+    ditherNoise: Float = _ambientDitherNoise.value,
+  ) {
+    _frameExtendStrength.value = extendStrength
+    _frameExtendDetailProtection.value = detailProtection
+    _frameExtendGlowMix.value = glowMix
+    _ambientDitherNoise.value = ditherNoise
+
+    playerPreferences.ambientExtendStrength.set(extendStrength)
+    playerPreferences.ambientExtendDetailProtection.set(detailProtection)
+    playerPreferences.ambientExtendGlowMix.set(glowMix)
+    playerPreferences.ambientDitherNoise.set(ditherNoise)
+
+    scheduleAmbientUpdate()
+  }
+
+  private fun scheduleAmbientUpdate(delayMs: Long = 150L) {
+    if (!_isAmbientEnabled.value) return
+
+    ambientDebounceJob?.cancel()
+    ambientDebounceJob = viewModelScope.launch {
+      delay(delayMs)
+      updateAmbientStretch()
+    }
+  }
+
+  private fun setAmbientSampleBudget(sampleBudget: Int) {
+    _ambientBlurSamples.value = sampleBudget
+    playerPreferences.ambientBlurSamples.set(sampleBudget)
+  }
+
+  private fun applyFrameExtendPreset(preset: AmbientFrameExtendPreset) {
+    setAmbientSampleBudget(preset.sampleBudget)
+
+    _frameExtendStrength.value = preset.extendStrength
+    _frameExtendDetailProtection.value = preset.detailProtection
+    _frameExtendGlowMix.value = preset.glowMix
+    _ambientDitherNoise.value = preset.ditherNoise
+    playerPreferences.ambientExtendStrength.set(preset.extendStrength)
+    playerPreferences.ambientExtendDetailProtection.set(preset.detailProtection)
+    playerPreferences.ambientExtendGlowMix.set(preset.glowMix)
+    playerPreferences.ambientDitherNoise.set(preset.ditherNoise)
+
+    _ambientBezelDepth.value = preset.bezelDepth
+    _ambientVignetteStrength.value = preset.vignetteStrength
+    _ambientOpacity.value = preset.opacity
+    playerPreferences.ambientBezelDepth.set(preset.bezelDepth)
+    playerPreferences.ambientVignetteStrength.set(preset.vignetteStrength)
+    playerPreferences.ambientOpacity.set(preset.opacity)
+
+    scheduleAmbientUpdate()
+  }
+
   fun applyAmbientProfileFast() {
-    updateAmbientParams(
-      blurSamples = 16, maxRadius = 0.22f, glowIntensity = 1.4f,
-      satBoost = 1.2f, ditherNoise = 0.0f, bezelDepth = 0.0f,
-      vignetteStrength = 0.4f, warmth = 0.0f, fadeCurve = 1.6f, opacity = 1.0f
-    )
+    when (_ambientVisualMode.value) {
+      AmbientVisualMode.GLOW -> {
+        val preset = AmbientShaderPresets.glowFast
+        updateAmbientParams(
+          blurSamples = preset.blurSamples,
+          maxRadius = preset.maxRadius,
+          glowIntensity = preset.glowIntensity,
+          satBoost = preset.satBoost,
+          vignetteStrength = preset.vignetteStrength,
+          warmth = preset.warmth,
+          fadeCurve = preset.fadeCurve,
+          opacity = preset.opacity,
+        )
+      }
+      AmbientVisualMode.FRAME_EXTEND -> applyFrameExtendPreset(AmbientShaderPresets.frameExtendFast)
+    }
   }
 
   /** Balanced profile — good quality/performance trade-off for most devices. */
   fun applyAmbientProfileBalanced() {
-    updateAmbientParams(
-      blurSamples = 24, maxRadius = 0.28f, glowIntensity = 1.45f,
-      satBoost = 1.25f, ditherNoise = 0.0f, bezelDepth = 0.0f,
-      vignetteStrength = 0.55f, warmth = 0.0f, fadeCurve = 1.7f, opacity = 1.0f
-    )
+    when (_ambientVisualMode.value) {
+      AmbientVisualMode.GLOW -> {
+        val preset = AmbientShaderPresets.glowBalanced
+        updateAmbientParams(
+          blurSamples = preset.blurSamples,
+          maxRadius = preset.maxRadius,
+          glowIntensity = preset.glowIntensity,
+          satBoost = preset.satBoost,
+          vignetteStrength = preset.vignetteStrength,
+          warmth = preset.warmth,
+          fadeCurve = preset.fadeCurve,
+          opacity = preset.opacity,
+        )
+      }
+      AmbientVisualMode.FRAME_EXTEND -> applyFrameExtendPreset(AmbientShaderPresets.frameExtendBalanced)
+    }
   }
 
   /** High Quality profile — maximum visual fidelity for high-end devices. */
   fun applyAmbientProfileHighQuality() {
-    updateAmbientParams(
-      blurSamples = 48, maxRadius = 0.35f, glowIntensity = 1.5f,
-      satBoost = 1.3f, ditherNoise = 0.0f, bezelDepth = 0.0f,
-      vignetteStrength = 0.7f, warmth = 0.0f, fadeCurve = 1.8f, opacity = 1.0f
-    )
+    when (_ambientVisualMode.value) {
+      AmbientVisualMode.GLOW -> {
+        val preset = AmbientShaderPresets.glowHighQuality
+        updateAmbientParams(
+          blurSamples = preset.blurSamples,
+          maxRadius = preset.maxRadius,
+          glowIntensity = preset.glowIntensity,
+          satBoost = preset.satBoost,
+          vignetteStrength = preset.vignetteStrength,
+          warmth = preset.warmth,
+          fadeCurve = preset.fadeCurve,
+          opacity = preset.opacity,
+        )
+      }
+      AmbientVisualMode.FRAME_EXTEND -> applyFrameExtendPreset(AmbientShaderPresets.frameExtendHighQuality)
+    }
   }
 
   fun updateAmbientStretch() {
@@ -2434,6 +2540,51 @@ class PlayerViewModel(
    *      Fibonacci-spiral blur kernel and composites the glowing result.
    */
   private fun buildAmbientShader(
+    sx: Double, sy: Double,
+    blurSamples: Int, maxRadius: Float,
+    glowIntensity: Float, satBoost: Float,
+    ditherNoise: Float, bezelDepth: Float,
+    vignetteStrength: Float, warmth: Float,
+    fadeCurve: Float, opacity: Float
+  ): String {
+    val context = AmbientRenderContext(scaleX = sx, scaleY = sy)
+    val shared =
+      AmbientSharedShaderConfig(
+        bezelDepth = if (_ambientVisualMode.value == AmbientVisualMode.FRAME_EXTEND) bezelDepth else 0f,
+        vignetteStrength = vignetteStrength,
+        opacity = opacity,
+      )
+
+    val spec: AmbientShaderSpec =
+      when (_ambientVisualMode.value) {
+        AmbientVisualMode.GLOW ->
+          AmbientGlowShaderSpec(
+            context = context,
+            shared = shared,
+            blurSamples = blurSamples,
+            maxRadius = maxRadius,
+            glowIntensity = glowIntensity,
+            satBoost = satBoost,
+            warmth = warmth,
+            fadeCurve = fadeCurve,
+          )
+        AmbientVisualMode.FRAME_EXTEND ->
+          AmbientFrameExtendShaderSpec(
+            context = context,
+            shared = shared,
+            sampleBudget = _ambientBlurSamples.value,
+            extendStrength = _frameExtendStrength.value,
+            detailProtection = _frameExtendDetailProtection.value,
+            glowMix = _frameExtendGlowMix.value,
+            ditherNoise = ditherNoise,
+          )
+      }
+
+    return AmbientShaderBuilder.build(spec)
+  }
+
+  @Suppress("unused")
+  private fun buildLegacyAmbientShader(
     sx: Double, sy: Double,
     blurSamples: Int, maxRadius: Float,
     glowIntensity: Float, satBoost: Float,

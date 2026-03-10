@@ -3,6 +3,7 @@ package app.marlboroadvance.mpvex.preferences
 
 import app.marlboroadvance.mpvex.preferences.preference.PreferenceStore
 import app.marlboroadvance.mpvex.preferences.preference.getEnum
+import app.marlboroadvance.mpvex.ui.player.AmbientVisualMode
 import app.marlboroadvance.mpvex.ui.player.PlayerOrientation
 import app.marlboroadvance.mpvex.ui.player.RepeatMode
 import app.marlboroadvance.mpvex.ui.player.VideoAspect
@@ -85,5 +86,9 @@ class PlayerPreferences(
   val ambientEdgeSmooth = preferenceStore.getFloat("ambient_edge_smooth", 0.02f)
   val ambientFadeCurve = preferenceStore.getFloat("ambient_fade_curve", 1.5f)
   val ambientOpacity = preferenceStore.getFloat("ambient_opacity", 1.0f)
+  val ambientVisualMode = preferenceStore.getEnum("ambient_visual_mode", AmbientVisualMode.GLOW)
+  val ambientExtendStrength = preferenceStore.getFloat("ambient_extend_strength", 0.70f)
+  val ambientExtendDetailProtection = preferenceStore.getFloat("ambient_extend_detail_protection", 0.60f)
+  val ambientExtendGlowMix = preferenceStore.getFloat("ambient_extend_glow_mix", 0.20f)
   val isAmbientEnabled = preferenceStore.getBoolean("ambient_enabled", false)
 }

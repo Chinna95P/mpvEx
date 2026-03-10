@@ -4,6 +4,7 @@ import android.content.res.Configuration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -29,6 +30,7 @@ import app.marlboroadvance.mpvex.presentation.components.PlayerSheet
 import app.marlboroadvance.mpvex.presentation.components.SliderItem
 import app.marlboroadvance.mpvex.ui.icons.Icon as AppSymbolIcon
 import app.marlboroadvance.mpvex.ui.icons.Icons
+import app.marlboroadvance.mpvex.ui.player.AmbientVisualMode
 import app.marlboroadvance.mpvex.ui.player.PlayerViewModel
 import app.marlboroadvance.mpvex.ui.theme.spacing
 
@@ -38,6 +40,7 @@ fun AmbientSheet(
     onDismissRequest: () -> Unit
 ) {
     // ── Collect all state flows ──────────────────────────────────────────────
+    val ambientMode      by viewModel.ambientVisualMode.collectAsState()
     val blurSamples      by viewModel.ambientBlurSamples.collectAsState()
     val maxRadius        by viewModel.ambientMaxRadius.collectAsState()
     val glowIntensity    by viewModel.ambientGlowIntensity.collectAsState()
@@ -48,8 +51,10 @@ fun AmbientSheet(
     val opacity          by viewModel.ambientOpacity.collectAsState()
     val bezelDepth       by viewModel.ambientBezelDepth.collectAsState()
     val ditherNoise      by viewModel.ambientDitherNoise.collectAsState()
+    val frameExtendStrength by viewModel.frameExtendStrength.collectAsState()
+    val frameExtendDetailProtection by viewModel.frameExtendDetailProtection.collectAsState()
+    val frameExtendGlowMix by viewModel.frameExtendGlowMix.collectAsState()
 
-    // Profile detection (all conditions must match for the button to highlight)
     val isFast = blurSamples == 16 && maxRadius == 0.17f &&
                  glowIntensity == 1.4f && satBoost == 1.2f &&
                  fadeCurve == 1.6f && opacity == 1.0f
@@ -304,43 +309,124 @@ fun AmbientSheet(
             )
 
             // ── Section: Advanced ────────────────────────────────────────────
-            SectionLabel("Advanced")
+            SectionLabel("Visual Style")
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = MaterialTheme.spacing.medium),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AmbientModeButton(
+                    label = AmbientVisualMode.GLOW.label,
+                    selected = ambientMode == AmbientVisualMode.GLOW,
+                    onClick = { viewModel.updateAmbientVisualMode(AmbientVisualMode.GLOW) },
+                )
+                AmbientModeButton(
+                    label = AmbientVisualMode.FRAME_EXTEND.label,
+                    selected = ambientMode == AmbientVisualMode.FRAME_EXTEND,
+                    onClick = { viewModel.updateAmbientVisualMode(AmbientVisualMode.FRAME_EXTEND) },
+                )
+            }
 
-            SliderItem(
-                label = "Bezel",
-                valueText = "%.3f".format(bezelDepth),
-                value = bezelDepth,
-                onChange = { viewModel.updateAmbientParams(bezelDepth = it) },
-                min = 0.0f,
-                max = 0.1f,
-                steps = 50,
-                icon = {
-                    AppSymbolIcon(
-                        imageVector = Icons.Default.RoundedCorner,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp),
-                    )
-                },
-            )
+            if (ambientMode == AmbientVisualMode.FRAME_EXTEND) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = MaterialTheme.spacing.medium),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                )
 
-            SliderItem(
-                label = "Dither",
-                valueText = "%.3f".format(ditherNoise),
-                value = ditherNoise,
-                onChange = { viewModel.updateAmbientParams(ditherNoise = it) },
-                min = 0.0f,
-                max = 0.05f,
-                steps = 50,
-                icon = {
-                    AppSymbolIcon(
-                        imageVector = Icons.Default.Grain,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp),
-                    )
-                },
-            )
+                SectionLabel("Frame Extend")
+
+                SliderItem(
+                    label = "Strength",
+                    valueText = "%.2f".format(frameExtendStrength),
+                    value = frameExtendStrength,
+                    onChange = { viewModel.updateFrameExtendParams(extendStrength = it) },
+                    min = 0.20f,
+                    max = 1.0f,
+                    steps = 32,
+                    icon = {
+                        AppSymbolIcon(
+                            imageVector = Icons.Default.Gradient,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    },
+                )
+
+                SliderItem(
+                    label = "Detail Protect",
+                    valueText = "%.2f".format(frameExtendDetailProtection),
+                    value = frameExtendDetailProtection,
+                    onChange = { viewModel.updateFrameExtendParams(detailProtection = it) },
+                    min = 0.0f,
+                    max = 1.0f,
+                    steps = 20,
+                    icon = {
+                        AppSymbolIcon(
+                            imageVector = Icons.Default.BlurOn,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    },
+                )
+
+                SliderItem(
+                    label = "Glow Mix",
+                    valueText = "%.2f".format(frameExtendGlowMix),
+                    value = frameExtendGlowMix,
+                    onChange = { viewModel.updateFrameExtendParams(glowMix = it) },
+                    min = 0.0f,
+                    max = 0.8f,
+                    steps = 32,
+                    icon = {
+                        AppSymbolIcon(
+                            imageVector = Icons.Default.Brightness6,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    },
+                )
+
+                SliderItem(
+                    label = "Bezel",
+                    valueText = "%.3f".format(bezelDepth),
+                    value = bezelDepth,
+                    onChange = { viewModel.updateAmbientParams(bezelDepth = it) },
+                    min = 0.0f,
+                    max = 0.1f,
+                    steps = 50,
+                    icon = {
+                        AppSymbolIcon(
+                            imageVector = Icons.Default.RoundedCorner,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    },
+                )
+
+                SliderItem(
+                    label = "Dither",
+                    valueText = "%.3f".format(ditherNoise),
+                    value = ditherNoise,
+                    onChange = { viewModel.updateFrameExtendParams(ditherNoise = it) },
+                    min = 0.0f,
+                    max = 0.05f,
+                    steps = 50,
+                    icon = {
+                        AppSymbolIcon(
+                            imageVector = Icons.Default.Grain,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    },
+                )
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
         }
@@ -359,4 +445,26 @@ private fun SectionLabel(text: String) {
             vertical = 2.dp,
         ),
     )
+}
+
+@Composable
+private fun RowScope.AmbientModeButton(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    FilledTonalButton(
+        onClick = onClick,
+        modifier = Modifier.weight(1f),
+        colors = if (selected) {
+            ButtonDefaults.filledTonalButtonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            )
+        } else {
+            ButtonDefaults.filledTonalButtonColors()
+        },
+    ) {
+        Text(label, fontWeight = FontWeight.Bold)
+    }
 }
