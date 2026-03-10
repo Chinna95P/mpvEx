@@ -341,16 +341,15 @@ fun GestureHandler(
           // State for vertical gestures (volume/brightness)
           var startingY = 0f
           var mpvVolumeStartingY = 0f
-          var originalVolume = viewModel.getEffectiveVolumePercent(currentMPVVolume)
+          var originalVolume = currentVolume
           var originalMPVVolume = currentMPVVolume
           var originalBrightness = currentBrightness
-          var lastVolumeValue = originalVolume
+          var lastVolumeValue = currentVolume
           var lastMPVVolumeValue = currentMPVVolume ?: 100
           var lastBrightnessValue = currentBrightness
-          val gestureHeight = size.height.toFloat().coerceAtLeast(1f)
-          val brightnessGestureSens = 1.2f / gestureHeight
-          val volumeGestureSens = 140f / gestureHeight
-          val mpvVolumeGestureSens = 60f / gestureHeight
+          val brightnessGestureSens = 0.001f
+          val volumeGestureSens = 0.017f
+          val mpvVolumeGestureSens = 0.017f
 
           // Original speed for long press
           var originalSpeed = playbackSpeed ?: 1f
@@ -440,10 +439,10 @@ fun GestureHandler(
                           isVerticalGestureActive = true
                           startingY = 0f
                           mpvVolumeStartingY = 0f
-                          originalVolume = viewModel.getEffectiveVolumePercent(currentMPVVolume)
+                          originalVolume = currentVolume
                           originalMPVVolume = currentMPVVolume
                           originalBrightness = currentBrightness
-                          lastVolumeValue = originalVolume
+                          lastVolumeValue = currentVolume
                           lastMPVVolumeValue = currentMPVVolume ?: 100
                           lastBrightnessValue = currentBrightness
                         }
@@ -531,10 +530,10 @@ fun GestureHandler(
                               startingY,
                               currentPosition.y,
                               volumeGestureSens,
-                            ).coerceIn(0, 100)
+                            )
 
                             if (newVolume != lastVolumeValue) {
-                              viewModel.changeVolumePercentTo(newVolume)
+                              viewModel.changeVolumeTo(newVolume)
                               lastVolumeValue = newVolume
                             }
                           }
@@ -586,7 +585,7 @@ fun GestureHandler(
                     if (brightnessGesture || volumeGesture) {
                       isVerticalGestureActive = false
                       startingY = 0f
-                      lastVolumeValue = viewModel.getEffectiveVolumePercent(currentMPVVolume)
+                      lastVolumeValue = currentVolume
                       lastMPVVolumeValue = currentMPVVolume ?: 100
                       lastBrightnessValue = currentBrightness
                     }
@@ -626,7 +625,7 @@ fun GestureHandler(
               if (brightnessGesture || volumeGesture) {
                 isVerticalGestureActive = false
                 startingY = 0f
-                lastVolumeValue = viewModel.getEffectiveVolumePercent(currentMPVVolume)
+                lastVolumeValue = currentVolume
                 lastMPVVolumeValue = currentMPVVolume ?: 100
                 lastBrightnessValue = currentBrightness
               }

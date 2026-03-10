@@ -57,8 +57,6 @@ import java.io.File
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 import app.marlboroadvance.mpvex.preferences.AdvancedPreferences
-import kotlin.math.ceil
-import kotlin.math.roundToInt
 import kotlin.properties.ReadOnlyProperty
 import kotlin.reflect.KProperty
 
@@ -168,7 +166,6 @@ class PlayerViewModel(
   // Audio state
   val currentVolume = MutableStateFlow(host.audioManager.getStreamVolume(AudioManager.STREAM_MUSIC))
   private val volumeBoostCap by MPVLib.propInt["volume-max"].collectAsState(viewModelScope)
-  private val normalizedVolumeRange = 0..100
 
   init {
     // Poll precise position only when playing
@@ -1257,87 +1254,30 @@ class PlayerViewModel(
     brightnessSliderTimestamp.value = System.currentTimeMillis()
   }
 
-  fun getEffectiveVolumePercent(mpvVolume: Int? = MPVLib.getPropertyInt("volume")): Int {
-    if (maxVolume <= 0) return 0
-    val streamVolume = currentVolume.value.coerceIn(0..maxVolume)
-    if (streamVolume == 0) return 0
-
-    val baseFraction = streamVolume.toFloat() / maxVolume.toFloat()
-    val mpvFraction = (mpvVolume ?: 100).coerceIn(0, 100) / 100f
-    return (baseFraction * mpvFraction * 100f).roundToInt().coerceIn(normalizedVolumeRange)
-  }
-
-  fun syncSystemVolumeState(
-    streamVolume: Int = host.audioManager.getStreamVolume(AudioManager.STREAM_MUSIC),
-    mpvVolume: Int? = MPVLib.getPropertyInt("volume"),
-  ) {
-    val normalizedStreamVolume = streamVolume.coerceIn(0..maxVolume)
-    currentVolume.value = normalizedStreamVolume
-
-    if (normalizedStreamVolume < maxVolume && (mpvVolume ?: 100) > 100) {
-      changeMPVVolumeTo(100)
-    }
-  }
-
-  private fun resolveNormalizedVolume(percent: Int): Pair<Int, Int> {
-    val clampedPercent = percent.coerceIn(normalizedVolumeRange)
-    if (clampedPercent <= 0 || maxVolume <= 0) {
-      return 0 to 100
-    }
-
-    val scaledVolume = (clampedPercent / 100f) * maxVolume.toFloat()
-    val targetStreamVolume = ceil(scaledVolume).toInt().coerceIn(1, maxVolume)
-    val targetMpvVolume =
-      ((scaledVolume / targetStreamVolume.toFloat()) * 100f)
-        .roundToInt()
-        .coerceIn(1, 100)
-
-    return targetStreamVolume to targetMpvVolume
-  }
-
-  fun changeVolumePercentTo(percent: Int) {
-    val targetPercent = percent.coerceIn(normalizedVolumeRange)
-    val currentMpvVolume = MPVLib.getPropertyInt("volume") ?: 100
-
-    if (targetPercent < normalizedVolumeRange.last && currentMpvVolume > 100) {
-      changeMPVVolumeTo(100)
-    }
-
-    val (targetStreamVolume, targetMpvVolume) = resolveNormalizedVolume(targetPercent)
-    host.audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetStreamVolume, 0)
-    currentVolume.value = targetStreamVolume
-    changeMPVVolumeTo(targetMpvVolume)
-  }
-
   fun changeVolumeBy(change: Int) {
-    val mpvVolume = MPVLib.getPropertyInt("volume") ?: 100
+    val mpvVolume = MPVLib.getPropertyInt("volume")
     val absoluteMaxVolume = volumeBoostCap ?: (audioPreferences.volumeBoostCap.get() + 100)
-    val effectivePercent = getEffectiveVolumePercent(mpvVolume)
 
-    if (currentVolume.value == maxVolume && absoluteMaxVolume > 100) {
-      if (mpvVolume > 100) {
-        return changeMPVVolumeTo((mpvVolume + change).coerceIn(100, absoluteMaxVolume))
+    if (absoluteMaxVolume > 100 && currentVolume.value == maxVolume) {
+      if (mpvVolume == 100 && change < 0) {
+        changeVolumeTo(currentVolume.value + change)
       }
-
-      if (effectivePercent >= normalizedVolumeRange.last && change > 0) {
-        return changeMPVVolumeTo((mpvVolume + change).coerceIn(100, absoluteMaxVolume))
+      val finalMPVVolume = (mpvVolume?.plus(change))?.coerceAtLeast(100) ?: 100
+      if (finalMPVVolume in 100..absoluteMaxVolume) {
+        return changeMPVVolumeTo(finalMPVVolume)
       }
     }
-
-    changeVolumePercentTo(effectivePercent + change)
+    changeVolumeTo(currentVolume.value + change)
   }
 
   fun changeVolumeTo(volume: Int) {
     val newVolume = volume.coerceIn(0..maxVolume)
     host.audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVolume, 0)
     currentVolume.value = newVolume
-    if (newVolume < maxVolume) {
-      changeMPVVolumeTo(100)
-    }
   }
 
   fun changeMPVVolumeTo(volume: Int) {
-    MPVLib.setPropertyInt("volume", volume.coerceAtLeast(0))
+    MPVLib.setPropertyInt("volume", volume)
   }
 
   fun displayVolumeSlider() {
@@ -2288,12 +2228,17 @@ class PlayerViewModel(
     }
   }
 
-  /** Called when the device orientation changes. Refreshes ambient for the new screen dimensions. */
-  @Suppress("UNUSED_PARAMETER")
+  /** Called when the device orientation changes. Pauses ambient in portrait and refreshes it in landscape. */
   fun onOrientationChanged(isPortrait: Boolean) {
     if (!_isAmbientEnabled.value) return
-    // Portrait and landscape are both supported by updateAmbientStretch().
-    // Keep the parameter so the existing activity callback flow stays unchanged.
+
+    if (isPortrait) {
+      disableAmbientShader()
+      lastAmbientScaleX = -1.0
+      lastAmbientScaleY = -1.0
+      playerUpdate.value = PlayerUpdates.ShowText("Ambience Mode: Paused in portrait")
+      return
+    }
 
     // Force shader refresh to adapt to new screen dimensions.
     lastAmbientScaleX = -1.0

@@ -101,6 +101,14 @@ class ThumbnailRepository(
               return@async null
             }
 
+            val embeddedThumb = extractEmbeddedThumbnail(video, diskCacheDimension)
+            if (embeddedThumb != null) {
+              memoryCache.put(key, embeddedThumb)
+              _thumbnailReadyKeys.tryEmit(key)
+              writeToDisk(video, embeddedThumb)
+              return@async embeddedThumb
+            }
+
             // Check if this video should use MediaStore
             val videoKey = videoBaseKey(video)
             val thumbnail = if (useMediaStoreForVideo.containsKey(videoKey)) {
@@ -300,6 +308,50 @@ class ThumbnailRepository(
     val matrix = android.graphics.Matrix()
     matrix.postRotate(rotation.toFloat())
     return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+  }
+
+  private suspend fun extractEmbeddedThumbnail(
+    video: Video,
+    dimension: Int,
+  ): Bitmap? {
+    if (isNetworkUrl(video.path)) return null
+    return withContext(Dispatchers.IO) {
+      runCatching {
+        val retriever = android.media.MediaMetadataRetriever()
+        try {
+          retriever.setDataSource(context, video.uri)
+          val picture = retriever.embeddedPicture
+          if (picture != null && picture.isNotEmpty()) {
+            val bitmap = BitmapFactory.decodeByteArray(picture, 0, picture.size)
+            if (bitmap != null) {
+              val maxSize = max(bitmap.width, bitmap.height)
+              val finalThumb = if (maxSize > dimension) {
+                val scale = dimension.toFloat() / maxSize
+                val finalWidth = max(1, (bitmap.width * scale).toInt())
+                val finalHeight = max(1, (bitmap.height * scale).toInt())
+                val scaled = Bitmap.createScaledBitmap(bitmap, finalWidth, finalHeight, true)
+                if (scaled != bitmap) {
+                  bitmap.recycle()
+                }
+                scaled
+              } else {
+                bitmap
+              }
+              return@withContext rotateIfNeeded(video, finalThumb)
+            }
+          }
+        } finally {
+          try {
+            retriever.release()
+          } catch (e: Exception) {
+            // Ignore
+          }
+        }
+        null
+      }.onFailure { e ->
+        android.util.Log.w("ThumbnailRepository", "Failed to extract embedded thumbnail for ${video.displayName}", e)
+      }.getOrNull()
+    }
   }
 
   private suspend fun generateWithFastThumbnails(

@@ -368,16 +368,7 @@ fun PlayerControls(
               top.linkTo(parent.top, spacing.larger)
               bottom.linkTo(parent.bottom, spacing.extraLarge)
             },
-        ) {
-          BrightnessSlider(
-            brightness = brightness,
-            range = 0f..1f,
-            onValueChange = {
-              viewModel.changeBrightnessTo(it)
-              viewModel.displayBrightnessSlider()
-            },
-          )
-        }
+        ) { BrightnessSlider(brightness, 0f..1f) }
 
         AnimatedVisibility(
           isVolumeSliderShown,
@@ -422,10 +413,6 @@ fun PlayerControls(
             range = 0..viewModel.maxVolume,
             boostRange = if (showBoost) 0..effBoostCap else null,
             displayAsPercentage = displayVolumeAsPercentage,
-            onValueChange = {
-              viewModel.changeVolumePercentTo(it)
-              viewModel.displayVolumeSlider()
-            },
           )
         }
 
