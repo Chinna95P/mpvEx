@@ -2,6 +2,10 @@ package app.marlboroadvance.mpvex.utils.storage
 
 import android.content.Context
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.os.storage.StorageManager
+import android.os.storage.StorageVolume
 import android.provider.MediaStore
 import android.util.Log
 import app.marlboroadvance.mpvex.database.repository.VideoMetadataCacheRepository
@@ -159,7 +163,7 @@ object VideoScanUtils : KoinComponent {
     /**
      * Scan videos from filesystem (fallback)
      */
-    private fun scanVideosFromFileSystem(
+    private suspend fun scanVideosFromFileSystem(
         context: Context,
         folder: File,
         videosMap: MutableMap<String, Video>,
