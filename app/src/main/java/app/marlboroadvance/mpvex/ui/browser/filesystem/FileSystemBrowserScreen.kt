@@ -70,6 +70,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.marlboroadvance.mpvex.BuildConfig
 import app.marlboroadvance.mpvex.domain.browser.FileSystemItem
+import app.marlboroadvance.mpvex.preferences.AppearancePreferences
 import app.marlboroadvance.mpvex.preferences.BrowserPreferences
 import app.marlboroadvance.mpvex.preferences.GesturePreferences
 import app.marlboroadvance.mpvex.preferences.MediaLayoutMode
@@ -77,6 +78,7 @@ import app.marlboroadvance.mpvex.preferences.preference.collectAsState
 import app.marlboroadvance.mpvex.presentation.components.pullrefresh.PullRefreshBox
 import app.marlboroadvance.mpvex.ui.browser.cards.FolderCard
 import app.marlboroadvance.mpvex.ui.browser.cards.VideoCard
+import app.marlboroadvance.mpvex.ui.browser.cards.VideoCardUiConfig
 import app.marlboroadvance.mpvex.ui.browser.components.BrowserBottomBar
 import app.marlboroadvance.mpvex.ui.browser.components.BrowserTopBar
 import app.marlboroadvance.mpvex.ui.browser.dialogs.AddToPlaylistDialog
@@ -98,12 +100,13 @@ import app.marlboroadvance.mpvex.utils.permission.PermissionUtils
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.PermissionStatus
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import my.nanihadesuka.compose.LazyColumnScrollbar
 import my.nanihadesuka.compose.ScrollbarSettings
 import org.koin.compose.koinInject
+import kotlin.coroutines.coroutineContext
 
 /**
  * Root File System Browser screen - shows storage volumes
@@ -371,73 +374,45 @@ fun FileSystemBrowserScreen(path: String? = null) {
 
   LaunchedEffect(searchQuery, isSearching, isAtRoot, items) {
     if (isSearching && searchQuery.isNotBlank()) {
+      delay(250)
       isSearchLoading = true
-      coroutineScope.launch {
-        try {
-          val results = if (isAtRoot) {
-            // At storage roots - search across all storage volumes AND their parent directories
-            val allResults = mutableListOf<FileSystemItem>()
-            
-            // Get unique parent directories from storage volumes
-            val parentDirectories = items.filterIsInstance<FileSystemItem.Folder>()
-              .map { it.path }
-              .mapNotNull { path ->
-                // Extract parent directory (e.g., /storage/emulated/0 from /storage/emulated/0/DCIM)
-                val parentPath = java.io.File(path).parent
-                parentPath
+      try {
+        val results =
+          if (isAtRoot) {
+            items
+              .filterIsInstance<FileSystemItem.Folder>()
+              .flatMap { storageVolume ->
+                runCatching {
+                  Log.d("FileSystemBrowserScreen", "Searching in storage volume: ${storageVolume.path}")
+                  app.marlboroadvance.mpvex.ui.browser.filesystem.searchRecursively(
+                    context,
+                    storageVolume.path,
+                    searchQuery,
+                  )
+                }.getOrElse { error ->
+                  Log.e("FileSystemBrowserScreen", "Error searching volume ${storageVolume.path}", error)
+                  emptyList()
+                }
               }
-              .distinct()
-            
-            // Search in parent directories (like /storage/emulated/0) directly
-            parentDirectories.forEach { parentPath ->
-              try {
-                Log.d("FileSystemBrowserScreen", "Searching in parent directory: $parentPath")
-                val parentResults = app.marlboroadvance.mpvex.ui.browser.filesystem.searchRecursively(context, parentPath, searchQuery)
-                Log.d("FileSystemBrowserScreen", "Found ${parentResults.size} results in parent $parentPath")
-                allResults.addAll(parentResults)
-              } catch (e: Exception) {
-                Log.e("FileSystemBrowserScreen", "Error searching parent directory $parentPath", e)
+              .distinctBy { item ->
+                when (item) {
+                  is FileSystemItem.VideoFile -> item.video.path
+                  is FileSystemItem.Folder -> item.path
+                }
               }
-            }
-            
-            // Also search in the storage volume folders themselves (existing behavior)
-            items.filterIsInstance<FileSystemItem.Folder>().forEach { storageVolume ->
-              try {
-                Log.d("FileSystemBrowserScreen", "Searching in storage volume: ${storageVolume.path}")
-                val rootResults = app.marlboroadvance.mpvex.ui.browser.filesystem.searchRecursively(context, storageVolume.path, searchQuery)
-                Log.d("FileSystemBrowserScreen", "Found ${rootResults.size} results in ${storageVolume.path}")
-                allResults.addAll(rootResults)
-              } catch (e: Exception) {
-                Log.e("FileSystemBrowserScreen", "Error searching volume ${storageVolume.path}", e)
-              }
-            }
-            
-            // Remove duplicates based on file path
-            val uniqueResults = allResults.distinctBy { item ->
-              when (item) {
-                is FileSystemItem.VideoFile -> item.video.path
-                is FileSystemItem.Folder -> item.path
-              }
-            }
-            
-            Log.d("FileSystemBrowserScreen", "Total search results after deduplication: ${uniqueResults.size}")
-            uniqueResults
           } else if (currentPath != null) {
-            // In a specific directory - search from there
             Log.d("FileSystemBrowserScreen", "Searching in directory: $currentPath")
-            val results = app.marlboroadvance.mpvex.ui.browser.filesystem.searchRecursively(context, currentPath, searchQuery)
-            Log.d("FileSystemBrowserScreen", "Found ${results.size} results in $currentPath")
-            results
+            app.marlboroadvance.mpvex.ui.browser.filesystem.searchRecursively(context, currentPath, searchQuery)
           } else {
             emptyList()
           }
-          searchResults = results
-        } catch (e: Exception) {
-          Log.e("FileSystemBrowserScreen", "Error during search", e)
-          searchResults = emptyList()
-        } finally {
-          isSearchLoading = false
-        }
+
+        searchResults = results
+      } catch (e: Exception) {
+        Log.e("FileSystemBrowserScreen", "Error during search", e)
+        searchResults = emptyList()
+      } finally {
+        isSearchLoading = false
       }
     } else {
       searchResults = emptyList()
@@ -1024,6 +999,7 @@ suspend fun searchRecursively(
   directoryPath: String,
   query: String,
 ): List<FileSystemItem> {
+  coroutineContext.ensureActive()
   val results = mutableListOf<FileSystemItem>()
   
   try {
@@ -1037,6 +1013,7 @@ suspend fun searchRecursively(
 
     // Filter items that match the search query (case-insensitive)
     items.forEach { item ->
+      coroutineContext.ensureActive()
       when (item) {
         is FileSystemItem.VideoFile -> {
           if (item.video.displayName.contains(query, ignoreCase = true)) {
@@ -1049,13 +1026,8 @@ suspend fun searchRecursively(
             Log.d("FileSystemBrowserScreen", "Found matching folder: ${item.name}")
             results.add(item)
           }
-          // Recursively search in subdirectories
-          try {
-            val subResults = searchRecursively(context, item.path, query)
-            results.addAll(subResults)
-          } catch (e: Exception) {
-            Log.e("FileSystemBrowserScreen", "Error searching subdirectory ${item.path}", e)
-          }
+          val subResults = searchRecursively(context, item.path, query)
+          results.addAll(subResults)
         }
       }
     }
@@ -1151,9 +1123,42 @@ private fun FileSystemBrowserContent(
 ) {
   val gesturePreferences = koinInject<GesturePreferences>()
   val browserPreferences = koinInject<BrowserPreferences>()
+  val appearancePreferences = koinInject<AppearancePreferences>()
   val thumbnailRepository = koinInject<app.marlboroadvance.mpvex.domain.thumbnail.ThumbnailRepository>()
   val tapThumbnailToSelect by gesturePreferences.tapThumbnailToSelect.collectAsState()
   val showVideoThumbnails by browserPreferences.showVideoThumbnails.collectAsState()
+  val unlimitedNameLines by appearancePreferences.unlimitedNameLines.collectAsState()
+  val showSizeChip by browserPreferences.showSizeChip.collectAsState()
+  val showResolutionChip by browserPreferences.showResolutionChip.collectAsState()
+  val showFramerateInResolution by browserPreferences.showFramerateInResolution.collectAsState()
+  val showProgressBar by browserPreferences.showProgressBar.collectAsState()
+  val showDateChip by browserPreferences.showDateChip.collectAsState()
+  val showUnplayedOldVideoLabel by appearancePreferences.showUnplayedOldVideoLabel.collectAsState()
+  val unplayedOldVideoDays by appearancePreferences.unplayedOldVideoDays.collectAsState()
+  val videoCardUiConfig =
+    remember(
+      unlimitedNameLines,
+      showVideoThumbnails,
+      showSizeChip,
+      showResolutionChip,
+      showFramerateInResolution,
+      showProgressBar,
+      showDateChip,
+      showUnplayedOldVideoLabel,
+      unplayedOldVideoDays,
+    ) {
+      VideoCardUiConfig(
+        unlimitedNameLines = unlimitedNameLines,
+        showThumbnails = showVideoThumbnails,
+        showSizeChip = showSizeChip,
+        showResolutionChip = showResolutionChip,
+        showFramerateInResolution = showFramerateInResolution,
+        showProgressBar = showProgressBar,
+        showDateChip = showDateChip,
+        showUnplayedOldVideoLabel = showUnplayedOldVideoLabel,
+        unplayedOldVideoDays = unplayedOldVideoDays,
+      )
+    }
 
   // Calculate thumbnail dimensions for list mode
   val thumbWidthDp = 160.dp
@@ -1171,18 +1176,6 @@ private fun FileSystemBrowserContent(
       "filesystem_root"
     } else {
       breadcrumbs.lastOrNull()?.fullPath ?: "filesystem_${breadcrumbs.size}"
-    }
-  }
-
-  // Generate thumbnails sequentially
-  LaunchedEffect(folderId, showVideoThumbnails, videos.size, thumbWidthPx, thumbHeightPx) {
-    if (showVideoThumbnails && videos.isNotEmpty()) {
-      thumbnailRepository.startFolderThumbnailGeneration(
-        folderId = folderId,
-        videos = videos,
-        widthPx = thumbWidthPx,
-        heightPx = thumbHeightPx,
-      )
     }
   }
 
@@ -1228,6 +1221,33 @@ private fun FileSystemBrowserContent(
     }
 
     else -> {
+      val thumbnailPrefetchVideos by remember(items, listState) {
+        derivedStateOf {
+          if (videos.isEmpty()) {
+            emptyList()
+          } else {
+            val visibleIndexes = listState.layoutInfo.visibleItemsInfo.map { it.index }
+            val startIndex = visibleIndexes.minOrNull() ?: 0
+            val endExclusive = ((visibleIndexes.maxOrNull() ?: startIndex) + 25).coerceAtMost(items.size)
+            items
+              .subList(startIndex.coerceAtLeast(0), endExclusive)
+              .filterIsInstance<FileSystemItem.VideoFile>()
+              .map { it.video }
+          }
+        }
+      }
+
+      LaunchedEffect(folderId, showVideoThumbnails, thumbWidthPx, thumbHeightPx, thumbnailPrefetchVideos) {
+        if (showVideoThumbnails && thumbnailPrefetchVideos.isNotEmpty()) {
+          thumbnailRepository.startFolderThumbnailGeneration(
+            folderId = folderId,
+            videos = thumbnailPrefetchVideos,
+            widthPx = thumbWidthPx,
+            heightPx = thumbHeightPx,
+          )
+        }
+      }
+
       // Check if at top of list to hide scrollbar during pull-to-refresh
       val isAtTop by remember {
         derivedStateOf {
@@ -1325,6 +1345,7 @@ private fun FileSystemBrowserContent(
                 overrideShowSizeChip = null,
                 overrideShowResolutionChip = null,
                 useFolderNameStyle = false,
+                uiConfig = videoCardUiConfig,
               )
             }
           }
@@ -1368,7 +1389,41 @@ private fun FileSystemSearchContent(
 ) {
   val gesturePreferences = koinInject<GesturePreferences>()
   val browserPreferences = koinInject<BrowserPreferences>()
+  val appearancePreferences = koinInject<AppearancePreferences>()
   val tapThumbnailToSelect by gesturePreferences.tapThumbnailToSelect.collectAsState()
+  val showVideoThumbnails by browserPreferences.showVideoThumbnails.collectAsState()
+  val showSizeChip by browserPreferences.showSizeChip.collectAsState()
+  val showResolutionChip by browserPreferences.showResolutionChip.collectAsState()
+  val showFramerateInResolution by browserPreferences.showFramerateInResolution.collectAsState()
+  val showProgressBar by browserPreferences.showProgressBar.collectAsState()
+  val showDateChip by browserPreferences.showDateChip.collectAsState()
+  val unlimitedNameLines by appearancePreferences.unlimitedNameLines.collectAsState()
+  val showUnplayedOldVideoLabel by appearancePreferences.showUnplayedOldVideoLabel.collectAsState()
+  val unplayedOldVideoDays by appearancePreferences.unplayedOldVideoDays.collectAsState()
+  val videoCardUiConfig =
+    remember(
+      unlimitedNameLines,
+      showVideoThumbnails,
+      showSizeChip,
+      showResolutionChip,
+      showFramerateInResolution,
+      showProgressBar,
+      showDateChip,
+      showUnplayedOldVideoLabel,
+      unplayedOldVideoDays,
+    ) {
+      VideoCardUiConfig(
+        unlimitedNameLines = unlimitedNameLines,
+        showThumbnails = showVideoThumbnails,
+        showSizeChip = showSizeChip,
+        showResolutionChip = showResolutionChip,
+        showFramerateInResolution = showFramerateInResolution,
+        showProgressBar = showProgressBar,
+        showDateChip = showDateChip,
+        showUnplayedOldVideoLabel = showUnplayedOldVideoLabel,
+        unplayedOldVideoDays = unplayedOldVideoDays,
+      )
+    }
 
   // Track scroll for FAB visibility in search mode with proper scroll direction detection
   val previousIndex = remember { mutableIntStateOf(0) }
@@ -1499,6 +1554,7 @@ private fun FileSystemSearchContent(
                 overrideShowSizeChip = null,
                 overrideShowResolutionChip = null,
                 useFolderNameStyle = false,
+                uiConfig = videoCardUiConfig,
               )
             }
           }

@@ -184,21 +184,21 @@ class FileSystemBrowserViewModel(
 
     loadCurrentDirectory(forceFileSystemCheck = true)
   }
-  
+
   /**
    * Trigger a media scan for the current directory
    */
   private fun triggerMediaScan() {
     try {
       val path = _currentPath.value
-      
+
       // Skip if we're at storage roots marker
       if (path == STORAGE_ROOTS_MARKER) {
         return
       }
-      
+
       val folder = File(path)
-      
+
       if (folder.exists() && folder.isDirectory) {
         // Scan all video files in the folder
         val videoFiles = folder.listFiles { file ->
@@ -206,10 +206,10 @@ class FileSystemBrowserViewModel(
             "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "3gp", "mpg", "mpeg", "ts", "m2ts"
           )
         }
-        
+
         if (!videoFiles.isNullOrEmpty()) {
           val filePaths = videoFiles.map { it.absolutePath }.toTypedArray()
-          
+
           android.media.MediaScannerConnection.scanFile(
             getApplication(),
             filePaths,
@@ -217,7 +217,7 @@ class FileSystemBrowserViewModel(
           ) { scanPath, uri ->
             Log.d(TAG, "Media scan completed for: $scanPath -> $uri")
           }
-          
+
           Log.d(TAG, "Triggered media scan for ${filePaths.size} files in: $path")
         } else {
           Log.d(TAG, "No video files found in folder: $path")

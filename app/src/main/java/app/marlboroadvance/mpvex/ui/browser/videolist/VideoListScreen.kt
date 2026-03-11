@@ -77,6 +77,7 @@ import app.marlboroadvance.mpvex.presentation.Screen
 import app.marlboroadvance.mpvex.presentation.components.pullrefresh.PullRefreshBox
 import app.marlboroadvance.mpvex.BuildConfig
 import app.marlboroadvance.mpvex.ui.browser.cards.VideoCard
+import app.marlboroadvance.mpvex.ui.browser.cards.VideoCardUiConfig
 import app.marlboroadvance.mpvex.ui.browser.components.BrowserBottomBar
 import app.marlboroadvance.mpvex.ui.browser.components.BrowserTopBar
 import app.marlboroadvance.mpvex.ui.browser.dialogs.AddToPlaylistDialog
@@ -553,6 +554,7 @@ private fun VideoListContent(
   val thumbnailRepository = koinInject<ThumbnailRepository>()
   val gesturePreferences = koinInject<GesturePreferences>()
   val browserPreferences = koinInject<BrowserPreferences>()
+  val appearancePreferences = koinInject<AppearancePreferences>()
   val mediaLayoutMode by browserPreferences.mediaLayoutMode.collectAsState()
   val videoGridColumnsPortrait by browserPreferences.videoGridColumnsPortrait.collectAsState()
   val videoGridColumnsLandscape by browserPreferences.videoGridColumnsLandscape.collectAsState()
@@ -562,6 +564,14 @@ private fun VideoListContent(
   val tapThumbnailToSelect by gesturePreferences.tapThumbnailToSelect.collectAsState()
   val showSubtitleIndicator by browserPreferences.showSubtitleIndicator.collectAsState()
   val showVideoThumbnails by browserPreferences.showVideoThumbnails.collectAsState()
+  val unlimitedNameLines by appearancePreferences.unlimitedNameLines.collectAsState()
+  val showSizeChip by browserPreferences.showSizeChip.collectAsState()
+  val showResolutionChip by browserPreferences.showResolutionChip.collectAsState()
+  val showFramerateInResolution by browserPreferences.showFramerateInResolution.collectAsState()
+  val showProgressBar by browserPreferences.showProgressBar.collectAsState()
+  val showDateChip by browserPreferences.showDateChip.collectAsState()
+  val showUnplayedOldVideoLabel by appearancePreferences.showUnplayedOldVideoLabel.collectAsState()
+  val unplayedOldVideoDays by appearancePreferences.unplayedOldVideoDays.collectAsState()
   val density = LocalDensity.current
   val navigationBarHeight = app.marlboroadvance.mpvex.ui.browser.LocalNavigationBarHeight.current
   // Must match the thumbnail size logic inside `VideoCard` for this screen,
@@ -570,17 +580,30 @@ private fun VideoListContent(
   val aspect = 16f / 9f
   val thumbWidthPx = with(density) { thumbWidthDp.roundToPx() }
   val thumbHeightPx = (thumbWidthPx / aspect).roundToInt()
-
-  LaunchedEffect(folderId, showVideoThumbnails, videosWithInfo.size, thumbWidthPx, thumbHeightPx) {
-    if (showVideoThumbnails && videosWithInfo.isNotEmpty()) {
-      thumbnailRepository.startFolderThumbnailGeneration(
-        folderId = folderId,
-        videos = videosWithInfo.map { it.video },
-        widthPx = thumbWidthPx,
-        heightPx = thumbHeightPx,
+  val videoCardUiConfig =
+    remember(
+      unlimitedNameLines,
+      showVideoThumbnails,
+      showSizeChip,
+      showResolutionChip,
+      showFramerateInResolution,
+      showProgressBar,
+      showDateChip,
+      showUnplayedOldVideoLabel,
+      unplayedOldVideoDays,
+    ) {
+      VideoCardUiConfig(
+        unlimitedNameLines = unlimitedNameLines,
+        showThumbnails = showVideoThumbnails,
+        showSizeChip = showSizeChip,
+        showResolutionChip = showResolutionChip,
+        showFramerateInResolution = showFramerateInResolution,
+        showProgressBar = showProgressBar,
+        showDateChip = showDateChip,
+        showUnplayedOldVideoLabel = showUnplayedOldVideoLabel,
+        unplayedOldVideoDays = unplayedOldVideoDays,
       )
     }
-  }
 
   when {
     isLoading && videosWithInfo.isEmpty() -> {
@@ -660,6 +683,45 @@ private fun VideoListContent(
       LaunchedEffect(gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset) {
           rememberedGridIndex.intValue = gridState.firstVisibleItemIndex
           rememberedGridOffset.intValue = gridState.firstVisibleItemScrollOffset
+      }
+
+      val thumbnailPrefetchVideos by remember(
+        videosWithInfo,
+        mediaLayoutMode,
+        videoGridColumns,
+        listState,
+        gridState,
+      ) {
+        derivedStateOf {
+          if (videosWithInfo.isEmpty()) {
+            emptyList()
+          } else {
+            val visibleIndexes =
+              if (mediaLayoutMode == MediaLayoutMode.GRID) {
+                gridState.layoutInfo.visibleItemsInfo.map { it.index }
+              } else {
+                listState.layoutInfo.visibleItemsInfo.map { it.index }
+              }
+            val startIndex = visibleIndexes.minOrNull() ?: 0
+            val aheadCount = if (mediaLayoutMode == MediaLayoutMode.GRID) videoGridColumns * 3 else 12
+            val endExclusive =
+              ((visibleIndexes.maxOrNull() ?: startIndex) + aheadCount + 1)
+                .coerceAtMost(videosWithInfo.size)
+
+            videosWithInfo.subList(startIndex.coerceAtLeast(0), endExclusive).map { it.video }
+          }
+        }
+      }
+
+      LaunchedEffect(folderId, showVideoThumbnails, thumbWidthPx, thumbHeightPx, thumbnailPrefetchVideos) {
+        if (showVideoThumbnails && thumbnailPrefetchVideos.isNotEmpty()) {
+          thumbnailRepository.startFolderThumbnailGeneration(
+            folderId = folderId,
+            videos = thumbnailPrefetchVideos,
+            widthPx = thumbWidthPx,
+            heightPx = thumbHeightPx,
+          )
+        }
       }
 
       FabScrollHelper.trackScrollForFabVisibility(
@@ -752,6 +814,7 @@ private fun VideoListContent(
                 gridColumns = videoGridColumns,
                 showSubtitleIndicator = showSubtitleIndicator,
                 allowThumbnailGeneration = false,
+                uiConfig = videoCardUiConfig,
               )
             }
             }
@@ -803,6 +866,7 @@ private fun VideoListContent(
                   isGridMode = false,
                   showSubtitleIndicator = showSubtitleIndicator,
                   allowThumbnailGeneration = false,
+                  uiConfig = videoCardUiConfig,
                 )
               }
             }

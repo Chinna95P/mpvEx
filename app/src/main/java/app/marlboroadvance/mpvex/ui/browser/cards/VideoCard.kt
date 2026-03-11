@@ -24,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,6 +56,19 @@ import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
 import kotlin.math.roundToInt
 
+@Immutable
+data class VideoCardUiConfig(
+  val unlimitedNameLines: Boolean,
+  val showThumbnails: Boolean,
+  val showSizeChip: Boolean,
+  val showResolutionChip: Boolean,
+  val showFramerateInResolution: Boolean,
+  val showProgressBar: Boolean,
+  val showDateChip: Boolean,
+  val showUnplayedOldVideoLabel: Boolean,
+  val unplayedOldVideoDays: Int,
+)
+
 @Composable
 fun VideoCard(
   video: Video,
@@ -74,23 +88,34 @@ fun VideoCard(
   overrideShowResolutionChip: Boolean? = null,
   useFolderNameStyle: Boolean = false,
   allowThumbnailGeneration: Boolean = true,
+  uiConfig: VideoCardUiConfig? = null,
 ) {
   val appearancePreferences = koinInject<AppearancePreferences>()
   val browserPreferences = koinInject<BrowserPreferences>()
-  val unlimitedNameLines by appearancePreferences.unlimitedNameLines.collectAsState()
-  val showThumbnails by browserPreferences.showVideoThumbnails.collectAsState()
-  val showSizeChipPref by browserPreferences.showSizeChip.collectAsState()
-  val showResolutionChipPref by browserPreferences.showResolutionChip.collectAsState()
-  val showFramerateInResolution by browserPreferences.showFramerateInResolution.collectAsState()
-  val showProgressBar by browserPreferences.showProgressBar.collectAsState()
-  val showDateChip by browserPreferences.showDateChip.collectAsState()
-  val showUnplayedOldVideoLabel by appearancePreferences.showUnplayedOldVideoLabel.collectAsState()
-  val unplayedOldVideoDays by appearancePreferences.unplayedOldVideoDays.collectAsState()
-  val maxLines = if (unlimitedNameLines) Int.MAX_VALUE else 2
-  
+  val resolvedUiConfig =
+    uiConfig ?: VideoCardUiConfig(
+      unlimitedNameLines = appearancePreferences.unlimitedNameLines.collectAsState().value,
+      showThumbnails = browserPreferences.showVideoThumbnails.collectAsState().value,
+      showSizeChip = browserPreferences.showSizeChip.collectAsState().value,
+      showResolutionChip = browserPreferences.showResolutionChip.collectAsState().value,
+      showFramerateInResolution = browserPreferences.showFramerateInResolution.collectAsState().value,
+      showProgressBar = browserPreferences.showProgressBar.collectAsState().value,
+      showDateChip = browserPreferences.showDateChip.collectAsState().value,
+      showUnplayedOldVideoLabel = appearancePreferences.showUnplayedOldVideoLabel.collectAsState().value,
+      unplayedOldVideoDays = appearancePreferences.unplayedOldVideoDays.collectAsState().value,
+    )
+  val maxLines = if (resolvedUiConfig.unlimitedNameLines) Int.MAX_VALUE else 2
+
+  val showThumbnails = resolvedUiConfig.showThumbnails
+  val showFramerateInResolution = resolvedUiConfig.showFramerateInResolution
+  val showProgressBar = resolvedUiConfig.showProgressBar
+  val showDateChip = resolvedUiConfig.showDateChip
+  val showUnplayedOldVideoLabel = resolvedUiConfig.showUnplayedOldVideoLabel
+  val unplayedOldVideoDays = resolvedUiConfig.unplayedOldVideoDays
+
   // Use override parameters if provided, otherwise use preferences
-  val showSizeChip = overrideShowSizeChip ?: showSizeChipPref
-  val showResolutionChip = overrideShowResolutionChip ?: showResolutionChipPref
+  val showSizeChip = overrideShowSizeChip ?: resolvedUiConfig.showSizeChip
+  val showResolutionChip = overrideShowResolutionChip ?: resolvedUiConfig.showResolutionChip
 
   Card(
     modifier = modifier

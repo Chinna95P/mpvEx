@@ -15,6 +15,9 @@ import com.hierynomus.smbj.session.Session
 import com.hierynomus.smbj.share.DiskShare
 import fi.iki.elonen.NanoHTTPD
 import kotlinx.coroutines.runBlocking
+import okhttp3.Credentials
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import java.io.InputStream
 import java.util.EnumSet
 import java.util.concurrent.ConcurrentHashMap
@@ -28,6 +31,7 @@ class NetworkStreamingProxy private constructor() : NanoHTTPD("127.0.0.1", 0) {
 
   companion object {
     private const val TAG = "NetworkStreamingProxy"
+    private val sharedWebDavHttpClient: OkHttpClient by lazy { OkHttpClient() }
 
     @Volatile
     private var instance: NetworkStreamingProxy? = null
@@ -74,6 +78,12 @@ class NetworkStreamingProxy private constructor() : NanoHTTPD("127.0.0.1", 0) {
     fileSize: Long = -1L,
     mimeType: String = "video/mp4",
   ): String {
+    activeStreams.remove(streamId)?.let { existing ->
+      runBlocking {
+        runCatching { existing.client.disconnect() }
+      }
+    }
+
     val client = NetworkClientFactory.createClient(connection)
 
     val streamInfo = StreamInfo(
@@ -633,29 +643,19 @@ class NetworkStreamingProxy private constructor() : NanoHTTPD("127.0.0.1", 0) {
 
       Log.d(TAG, "WebDAV stream request - Protocol: $protocol, URL: $url")
 
-      // Use OkHttp directly to add Range header support
-      val okHttpClient = okhttp3.OkHttpClient.Builder()
-        .addInterceptor { chain ->
-          val request = chain.request().newBuilder()
-            .addHeader("Range", "bytes=$offset-")
-            .build()
-          chain.proceed(request)
-        }
-        .build()
-
-      // Build the request
-      val requestBuilder = okhttp3.Request.Builder()
+      val requestBuilder = Request.Builder()
         .url(url)
         .get()
+        .addHeader("Range", "bytes=$offset-")
 
       // Add auth if needed
       if (!streamInfo.connection.isAnonymous) {
-        val credentials = okhttp3.Credentials.basic(streamInfo.connection.username, streamInfo.connection.password)
+        val credentials = Credentials.basic(streamInfo.connection.username, streamInfo.connection.password)
         requestBuilder.addHeader("Authorization", credentials)
       }
 
       val request = requestBuilder.build()
-      val response = okHttpClient.newCall(request).execute()
+      val response = sharedWebDavHttpClient.newCall(request).execute()
 
       if (!response.isSuccessful && response.code != 206) {
         response.close()
@@ -868,10 +868,11 @@ class NetworkStreamingProxy private constructor() : NanoHTTPD("127.0.0.1", 0) {
    * Generic stream with offset using skip (less efficient, for other protocols)
    */
   private suspend fun getStreamWithOffsetGeneric(streamInfo: StreamInfo, offset: Long): InputStream? {
-    val client = NetworkClientFactory.createClient(streamInfo.connection)
-    client.connect().getOrThrow()
+    if (!streamInfo.client.isConnected()) {
+      streamInfo.client.connect().getOrThrow()
+    }
 
-    val stream = client.getFileStream(streamInfo.filePath).getOrNull()
+    val stream = streamInfo.client.getFileStream(streamInfo.filePath).getOrNull()
 
     if (stream != null && offset > 0) {
       var remaining = offset
@@ -882,7 +883,6 @@ class NetworkStreamingProxy private constructor() : NanoHTTPD("127.0.0.1", 0) {
         val skipped = stream.read(buffer, 0, toSkip)
         if (skipped <= 0) {
           stream.close()
-          client.disconnect()
           return null
         }
         remaining -= skipped

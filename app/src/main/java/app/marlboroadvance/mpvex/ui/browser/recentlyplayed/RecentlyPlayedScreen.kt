@@ -55,6 +55,7 @@ import app.marlboroadvance.mpvex.domain.media.model.Video
 import app.marlboroadvance.mpvex.domain.media.model.VideoFolder
 import app.marlboroadvance.mpvex.domain.thumbnail.ThumbnailRepository
 import app.marlboroadvance.mpvex.preferences.AdvancedPreferences
+import app.marlboroadvance.mpvex.preferences.AppearancePreferences
 import app.marlboroadvance.mpvex.preferences.BrowserPreferences
 import app.marlboroadvance.mpvex.preferences.GesturePreferences
 import app.marlboroadvance.mpvex.preferences.MediaLayoutMode
@@ -64,6 +65,7 @@ import app.marlboroadvance.mpvex.presentation.components.ConfirmDialog
 import app.marlboroadvance.mpvex.presentation.components.pullrefresh.PullRefreshBox
 import app.marlboroadvance.mpvex.ui.browser.cards.FolderCard
 import app.marlboroadvance.mpvex.ui.browser.cards.VideoCard
+import app.marlboroadvance.mpvex.ui.browser.cards.VideoCardUiConfig
 import app.marlboroadvance.mpvex.ui.browser.components.BrowserTopBar
 import app.marlboroadvance.mpvex.ui.browser.playlist.PlaylistDetailScreen
 import app.marlboroadvance.mpvex.ui.browser.selection.rememberSelectionManager
@@ -423,11 +425,20 @@ private fun RecentItemsContent(
 ) {
   val gesturePreferences = koinInject<GesturePreferences>()
   val browserPreferences = koinInject<app.marlboroadvance.mpvex.preferences.BrowserPreferences>()
+  val appearancePreferences = koinInject<AppearancePreferences>()
   val thumbnailRepository = koinInject<ThumbnailRepository>()
   val density = LocalDensity.current
   val tapThumbnailToSelect by gesturePreferences.tapThumbnailToSelect.collectAsState()
   val showSubtitleIndicator by browserPreferences.showSubtitleIndicator.collectAsState()
   val showVideoThumbnails by browserPreferences.showVideoThumbnails.collectAsState()
+  val unlimitedNameLines by appearancePreferences.unlimitedNameLines.collectAsState()
+  val showSizeChip by browserPreferences.showSizeChip.collectAsState()
+  val showResolutionChip by browserPreferences.showResolutionChip.collectAsState()
+  val showFramerateInResolution by browserPreferences.showFramerateInResolution.collectAsState()
+  val showProgressBar by browserPreferences.showProgressBar.collectAsState()
+  val showDateChip by browserPreferences.showDateChip.collectAsState()
+  val showUnplayedOldVideoLabel by appearancePreferences.showUnplayedOldVideoLabel.collectAsState()
+  val unplayedOldVideoDays by appearancePreferences.unplayedOldVideoDays.collectAsState()
   val mediaLayoutMode by browserPreferences.mediaLayoutMode.collectAsState()
   val folderGridColumnsPortrait by browserPreferences.folderGridColumnsPortrait.collectAsState()
   val folderGridColumnsLandscape by browserPreferences.folderGridColumnsLandscape.collectAsState()
@@ -453,16 +464,61 @@ private fun RecentItemsContent(
   val aspect = 16f / 9f
   val thumbWidthPx = with(density) { thumbWidthDp.roundToPx() }
   val thumbHeightPx = (thumbWidthPx / aspect).toInt()
+  val videoCardUiConfig =
+    remember(
+      unlimitedNameLines,
+      showVideoThumbnails,
+      showSizeChip,
+      showResolutionChip,
+      showFramerateInResolution,
+      showProgressBar,
+      showDateChip,
+      showUnplayedOldVideoLabel,
+      unplayedOldVideoDays,
+    ) {
+      VideoCardUiConfig(
+        unlimitedNameLines = unlimitedNameLines,
+        showThumbnails = showVideoThumbnails,
+        showSizeChip = showSizeChip,
+        showResolutionChip = showResolutionChip,
+        showFramerateInResolution = showFramerateInResolution,
+        showProgressBar = showProgressBar,
+        showDateChip = showDateChip,
+        showUnplayedOldVideoLabel = showUnplayedOldVideoLabel,
+        unplayedOldVideoDays = unplayedOldVideoDays,
+      )
+    }
 
   val recentVideos = remember(recentItems) {
     recentItems.filterIsInstance<RecentlyPlayedItem.VideoItem>().map { it.video }
   }
 
-  LaunchedEffect(recentVideos.size, showVideoThumbnails, thumbWidthPx, thumbHeightPx) {
-    if (showVideoThumbnails && recentVideos.isNotEmpty()) {
+  val thumbnailPrefetchVideos by remember(recentItems, isGridMode, listState, gridState) {
+    derivedStateOf {
+      if (recentVideos.isEmpty()) {
+        emptyList()
+      } else {
+        val visibleIndexes =
+          if (isGridMode) {
+            gridState.layoutInfo.visibleItemsInfo.map { it.index }
+          } else {
+            listState.layoutInfo.visibleItemsInfo.map { it.index }
+          }
+        val startIndex = visibleIndexes.minOrNull() ?: 0
+        val endExclusive = ((visibleIndexes.maxOrNull() ?: startIndex) + 16).coerceAtMost(recentItems.size)
+        recentItems
+          .subList(startIndex.coerceAtLeast(0), endExclusive)
+          .filterIsInstance<RecentlyPlayedItem.VideoItem>()
+          .map { it.video }
+      }
+    }
+  }
+
+  LaunchedEffect(thumbnailPrefetchVideos, showVideoThumbnails, thumbWidthPx, thumbHeightPx) {
+    if (showVideoThumbnails && thumbnailPrefetchVideos.isNotEmpty()) {
       thumbnailRepository.startFolderThumbnailGeneration(
         folderId = "recently_played",
-        videos = recentVideos,
+        videos = thumbnailPrefetchVideos,
         widthPx = thumbWidthPx,
         heightPx = thumbHeightPx,
       )
@@ -556,6 +612,7 @@ private fun RecentItemsContent(
                     isGridMode = true,
                     gridColumns = videoGridColumns,
                     showSubtitleIndicator = showSubtitleIndicator,
+                    uiConfig = videoCardUiConfig,
                   )
                 }
 
@@ -665,6 +722,7 @@ private fun RecentItemsContent(
                     },
                     isGridMode = false,
                     showSubtitleIndicator = showSubtitleIndicator,
+                    uiConfig = videoCardUiConfig,
                   )
                 }
 

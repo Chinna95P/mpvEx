@@ -83,6 +83,7 @@ import app.marlboroadvance.mpvex.presentation.components.pullrefresh.PullRefresh
 import app.marlboroadvance.mpvex.ui.browser.LocalNavigationBarHeight
 import app.marlboroadvance.mpvex.ui.browser.cards.FolderCard
 import app.marlboroadvance.mpvex.ui.browser.cards.VideoCard
+import app.marlboroadvance.mpvex.ui.browser.cards.VideoCardUiConfig
 import app.marlboroadvance.mpvex.ui.browser.components.BrowserTopBar
 import app.marlboroadvance.mpvex.ui.browser.dialogs.DeleteConfirmationDialog
 import app.marlboroadvance.mpvex.ui.browser.dialogs.GridColumnSelector
@@ -103,6 +104,7 @@ import app.marlboroadvance.mpvex.utils.permission.PermissionUtils
 import app.marlboroadvance.mpvex.utils.sort.SortUtils
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.PermissionStatus
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import my.nanihadesuka.compose.LazyColumnScrollbar
@@ -184,6 +186,7 @@ object FolderListScreen : Screen {
     // Search logic
     LaunchedEffect(searchQuery, isSearching) {
       if (isSearching && searchQuery.isNotBlank()) {
+        delay(250)
         isSearchLoading = true
         try {
           val results = searchFoldersAndVideos(context, searchQuery)
@@ -1012,6 +1015,42 @@ private fun SearchResultsContent(
     )
   }
   val videos = searchResults.filterIsInstance<FileSystemItem.VideoFile>().map { it.video }
+  val browserPreferences = koinInject<BrowserPreferences>()
+  val appearancePreferences = koinInject<AppearancePreferences>()
+  val showVideoThumbnails by browserPreferences.showVideoThumbnails.collectAsState()
+  val showSizeChip by browserPreferences.showSizeChip.collectAsState()
+  val showResolutionChip by browserPreferences.showResolutionChip.collectAsState()
+  val showFramerateInResolution by browserPreferences.showFramerateInResolution.collectAsState()
+  val showProgressBar by browserPreferences.showProgressBar.collectAsState()
+  val showDateChip by browserPreferences.showDateChip.collectAsState()
+  val showSubtitleIndicator by browserPreferences.showSubtitleIndicator.collectAsState()
+  val unlimitedNameLines by appearancePreferences.unlimitedNameLines.collectAsState()
+  val showUnplayedOldVideoLabel by appearancePreferences.showUnplayedOldVideoLabel.collectAsState()
+  val unplayedOldVideoDays by appearancePreferences.unplayedOldVideoDays.collectAsState()
+  val videoCardUiConfig =
+    remember(
+      unlimitedNameLines,
+      showVideoThumbnails,
+      showSizeChip,
+      showResolutionChip,
+      showFramerateInResolution,
+      showProgressBar,
+      showDateChip,
+      showUnplayedOldVideoLabel,
+      unplayedOldVideoDays,
+    ) {
+      VideoCardUiConfig(
+        unlimitedNameLines = unlimitedNameLines,
+        showThumbnails = showVideoThumbnails,
+        showSizeChip = showSizeChip,
+        showResolutionChip = showResolutionChip,
+        showFramerateInResolution = showFramerateInResolution,
+        showProgressBar = showProgressBar,
+        showDateChip = showDateChip,
+        showUnplayedOldVideoLabel = showUnplayedOldVideoLabel,
+        unplayedOldVideoDays = unplayedOldVideoDays,
+      )
+    }
   
   val isGridMode = mediaLayoutMode == app.marlboroadvance.mpvex.preferences.MediaLayoutMode.GRID
   
@@ -1052,6 +1091,8 @@ private fun SearchResultsContent(
             onLongClick = {},
             onThumbClick = { onVideoClick(video) },
             isGridMode = true,
+            showSubtitleIndicator = showSubtitleIndicator,
+            uiConfig = videoCardUiConfig,
           )
         }
       }
@@ -1088,6 +1129,8 @@ private fun SearchResultsContent(
             onLongClick = {},
             onThumbClick = { onVideoClick(video) },
             isGridMode = false,
+            showSubtitleIndicator = showSubtitleIndicator,
+            uiConfig = videoCardUiConfig,
           )
         }
       }

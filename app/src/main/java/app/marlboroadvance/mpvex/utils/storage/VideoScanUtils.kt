@@ -2,17 +2,14 @@ package app.marlboroadvance.mpvex.utils.storage
 
 import android.content.Context
 import android.net.Uri
-import android.os.Build
-import android.os.Environment
-import android.os.storage.StorageManager
-import android.os.storage.StorageVolume
 import android.provider.MediaStore
 import android.util.Log
+import app.marlboroadvance.mpvex.database.repository.VideoMetadataCacheRepository
 import app.marlboroadvance.mpvex.domain.media.model.Video
-import app.marlboroadvance.mpvex.utils.media.MediaInfoOps
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
 import java.io.File
 import java.util.Locale
 import kotlin.math.log10
@@ -22,18 +19,9 @@ import kotlin.math.pow
  * Video Scanning Utilities
  * Handles video file scanning and metadata extraction
  */
-object VideoScanUtils {
+object VideoScanUtils : KoinComponent {
     private const val TAG = "VideoScanUtils"
-    
-    /**
-     * Video metadata extracted from files
-     */
-    data class VideoMetadata(
-        val duration: Long,
-        val mimeType: String,
-        val width: Int = 0,
-        val height: Int = 0,
-    )
+    private val metadataCache: VideoMetadataCacheRepository by inject()
     
     /**
      * Get all videos in a specific folder
@@ -180,93 +168,72 @@ object VideoScanUtils {
     ) {
         try {
             val files = folder.listFiles() ?: return
+            val filesToProcess = mutableListOf<File>()
 
             for (file in files) {
-                try {
-                    if (!file.isFile) continue
-                    if (FileFilterUtils.shouldSkipFile(file, options, noMediaPathFilter)) continue
+                if (!file.isFile) continue
+                if (FileFilterUtils.shouldSkipFile(file, options, noMediaPathFilter)) continue
 
-                    val extension = file.extension.lowercase(Locale.getDefault())
-                    if (!FileTypeUtils.VIDEO_EXTENSIONS.contains(extension)) continue
-                    
+                val extension = file.extension.lowercase(Locale.getDefault())
+                if (!FileTypeUtils.VIDEO_EXTENSIONS.contains(extension)) continue
+
+                val path = file.absolutePath
+                if (videosMap.containsKey(path)) continue
+
+                filesToProcess.add(file)
+            }
+
+            if (filesToProcess.isEmpty()) return
+
+            val metadataMap =
+                metadataCache.getOrExtractMetadataBatch(
+                    filesToProcess.map { file ->
+                        Triple(file, Uri.fromFile(file), file.name)
+                    }
+                )
+
+            for (file in filesToProcess) {
+                try {
                     val path = file.absolutePath
-                    if (videosMap.containsKey(path)) continue
-                    
                     val uri = Uri.fromFile(file)
                     val displayName = file.name
                     val title = file.nameWithoutExtension
-                    val size = file.length()
+                    val fileSize = file.length()
                     val dateModified = file.lastModified() / 1000
-                    
-                    // Extract metadata
-                    val metadata = extractVideoMetadata(context, file)
-                    
+                    val cachedMetadata = metadataMap[path]
+                    val resolvedSize = cachedMetadata?.sizeBytes?.takeIf { it > 0 } ?: fileSize
+                    val mimeType = FileTypeUtils.getMimeTypeFromExtension(file.extension.lowercase())
+
                     videosMap[path] = Video(
                         id = path.hashCode().toLong(),
                         title = title,
                         displayName = displayName,
                         path = path,
                         uri = uri,
-                        duration = metadata.duration,
-                        durationFormatted = formatDuration(metadata.duration),
-                        size = size,
-                        sizeFormatted = formatFileSize(size),
+                        duration = cachedMetadata?.durationMs ?: 0L,
+                        durationFormatted = formatDuration(cachedMetadata?.durationMs ?: 0L),
+                        size = resolvedSize,
+                        sizeFormatted = formatFileSize(resolvedSize),
                         dateModified = dateModified,
                         dateAdded = dateModified,
-                        mimeType = metadata.mimeType,
+                        mimeType = mimeType,
                         bucketId = folder.absolutePath,
                         bucketDisplayName = folder.name,
-                        width = metadata.width,
-                        height = metadata.height,
-                        fps = 0f,
-                        resolution = formatResolution(metadata.width, metadata.height),
-                        hasEmbeddedSubtitles = false,
-                        subtitleCodec = ""
+                        width = cachedMetadata?.width ?: 0,
+                        height = cachedMetadata?.height ?: 0,
+                        fps = cachedMetadata?.fps ?: 0f,
+                        resolution = formatResolution(cachedMetadata?.width ?: 0, cachedMetadata?.height ?: 0),
+                        hasEmbeddedSubtitles = cachedMetadata?.hasEmbeddedSubtitles ?: false,
+                        subtitleCodec = cachedMetadata?.subtitleCodec ?: ""
                     )
                 } catch (e: Exception) {
                     Log.w(TAG, "Error processing file: ${file.absolutePath}", e)
-                    continue
                 }
             }
             
         } catch (e: Exception) {
             Log.e(TAG, "Filesystem video scan error", e)
         }
-    }
-    
-    /**
-     * Extracts video metadata using MediaInfo library
-     */
-    fun extractVideoMetadata(
-        context: Context,
-        file: File,
-    ): VideoMetadata {
-        var duration = 0L
-        var mimeType = "video/*"
-        var width = 0
-        var height = 0
-        
-        try {
-            val uri = Uri.fromFile(file)
-            val result = runBlocking {
-                MediaInfoOps.extractBasicMetadata(context, uri, file.name)
-            }
-            
-            result.onSuccess { metadata ->
-                duration = metadata.durationMs
-                width = metadata.width
-                height = metadata.height
-                mimeType = FileTypeUtils.getMimeTypeFromExtension(file.extension.lowercase())
-            }.onFailure { e ->
-                Log.w(TAG, "Could not extract metadata for ${file.absolutePath}, using fallback", e)
-                mimeType = FileTypeUtils.getMimeTypeFromExtension(file.extension.lowercase())
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Could not extract metadata for ${file.absolutePath}, using fallback", e)
-            mimeType = FileTypeUtils.getMimeTypeFromExtension(file.extension.lowercase())
-        }
-        
-        return VideoMetadata(duration, mimeType, width, height)
     }
     
     // Formatting utilities

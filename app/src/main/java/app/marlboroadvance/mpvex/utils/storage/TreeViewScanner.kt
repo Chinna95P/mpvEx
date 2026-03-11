@@ -56,6 +56,37 @@ object TreeViewScanner {
         val duration: Long,
         val dateModified: Long
     )
+
+    private fun mergeFolderData(
+        existing: FolderData?,
+        path: String,
+        name: String,
+        videoCount: Int,
+        totalSize: Long,
+        totalDuration: Long,
+        lastModified: Long,
+        hasSubfolders: Boolean,
+    ): FolderData {
+        if (existing == null) {
+            return FolderData(
+                path = path,
+                name = name,
+                videoCount = videoCount,
+                totalSize = totalSize,
+                totalDuration = totalDuration,
+                lastModified = lastModified,
+                hasSubfolders = hasSubfolders,
+            )
+        }
+
+        return existing.copy(
+            videoCount = existing.videoCount + videoCount,
+            totalSize = existing.totalSize + totalSize,
+            totalDuration = existing.totalDuration + totalDuration,
+            lastModified = maxOf(existing.lastModified, lastModified),
+            hasSubfolders = existing.hasSubfolders || hasSubfolders,
+        )
+    }
     
     /**
      * Get direct child folders of a parent directory for tree view
@@ -213,7 +244,6 @@ object TreeViewScanner {
                 val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
                 val dateColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_MODIFIED)
                 
-                // Collect videos by folder
                 val videosByFolder = mutableMapOf<String, MutableList<VideoInfo>>()
                 
                 while (cursor.moveToNext()) {
@@ -233,42 +263,23 @@ object TreeViewScanner {
                     )
                 }
                 
-                // Build folder data with recursive counts
-                for ((folderPath, _) in videosByFolder) {
-                    var totalCount = 0
-                    var totalSize = 0L
-                    var totalDuration = 0L
-                    var lastModified = 0L
-                    var hasSubfolders = false
-                    
-                    // Count all videos in this folder and subdirectories
-                    for ((otherPath, videos) in videosByFolder) {
-                        if (otherPath == folderPath || otherPath.startsWith("$folderPath${File.separator}")) {
-                            totalCount += videos.size
-                            for (video in videos) {
-                                totalSize += video.size
-                                totalDuration += video.duration
-                                if (video.dateModified > lastModified) {
-                                    lastModified = video.dateModified
-                                }
-                            }
-                            if (otherPath != folderPath) {
-                                hasSubfolders = true
-                            }
-                        }
-                    }
-                    
-                    if (totalCount > 0) {
-                        folders[folderPath] = FolderData(
+                for ((folderPath, videos) in videosByFolder) {
+                    val totalCount = videos.size
+                    val totalSize = videos.sumOf { it.size }
+                    val totalDuration = videos.sumOf { it.duration }
+                    val lastModified = videos.maxOfOrNull { it.dateModified } ?: 0L
+
+                    folders[folderPath] =
+                        mergeFolderData(
+                            existing = folders[folderPath],
                             path = folderPath,
                             name = File(folderPath).name,
                             videoCount = totalCount,
                             totalSize = totalSize,
                             totalDuration = totalDuration,
                             lastModified = lastModified,
-                            hasSubfolders = hasSubfolders
+                            hasSubfolders = false,
                         )
-                    }
                 }
             }
         } catch (e: Exception) {
@@ -363,28 +374,26 @@ object TreeViewScanner {
                 val folderPath = directory.absolutePath
                 
                 // Skip if already from MediaStore
-                if (!folders.containsKey(folderPath)) {
-                    var totalSize = 0L
-                    var lastModified = 0L
-                    
-                    for (video in videoFiles) {
-                        totalSize += video.length()
-                        val modified = video.lastModified()
-                        if (modified > lastModified) {
-                            lastModified = modified
-                        }
+                val totalSize = videoFiles.sumOf { it.length() }
+                val lastModified = videoFiles.maxOfOrNull { it.lastModified() } ?: 0L
+
+                val existing = folders[folderPath]
+                folders[folderPath] =
+                    if (existing == null) {
+                        FolderData(
+                            path = folderPath,
+                            name = directory.name,
+                            videoCount = videoFiles.size,
+                            totalSize = totalSize,
+                            totalDuration = 0L,
+                            lastModified = lastModified / 1000,
+                            hasSubfolders = subdirectories.isNotEmpty(),
+                        )
+                    } else {
+                        existing.copy(
+                            hasSubfolders = existing.hasSubfolders || subdirectories.isNotEmpty(),
+                        )
                     }
-                    
-                    folders[folderPath] = FolderData(
-                        path = folderPath,
-                        name = directory.name,
-                        videoCount = videoFiles.size,
-                        totalSize = totalSize,
-                        totalDuration = 0L, // Duration not available from filesystem
-                        lastModified = lastModified / 1000,
-                        hasSubfolders = subdirectories.isNotEmpty()
-                    )
-                }
             }
             
             // Recurse into subdirectories
@@ -401,57 +410,48 @@ object TreeViewScanner {
      * Ensures intermediate folders (without direct videos) are included with correct recursive counts
      */
     private fun buildParentHierarchy(folders: MutableMap<String, FolderData>) {
-        val allPaths = folders.keys.toSet()
-        val parentsToAdd = mutableSetOf<String>()
-        
-        // Find all parent folders that need to be added
-        for (folderPath in allPaths) {
+        val allPaths = folders.keys.toMutableSet()
+
+        for (folderPath in folders.keys.toList()) {
             var currentPath = File(folderPath).parent
-            while (currentPath != null) {
-                if (currentPath == "/" || currentPath.length <= 1) break
-                
-                // Add parent even if it already exists - we'll recalculate its counts
-                parentsToAdd.add(currentPath)
+            while (currentPath != null && currentPath != "/" && currentPath.length > 1) {
+                allPaths += currentPath
                 currentPath = File(currentPath).parent
             }
         }
-        
-        // Process parents from deepest to shallowest to ensure correct aggregation
-        val sortedParents = parentsToAdd.sortedByDescending { it.count { c -> c == File.separatorChar } }
-        
-        // Add/update parent folders with aggregated data
-        for (parentPath in sortedParents) {
-            var totalCount = 0
-            var totalSize = 0L
-            var totalDuration = 0L
-            var lastModified = 0L
-            var hasSubfolders = false
-            
-            // Aggregate from direct children only (their counts are already recursive)
-            for ((folderPath, folderData) in folders) {
-                val parent = File(folderPath).parent
-                if (parent == parentPath) {
-                    totalCount += folderData.videoCount
-                    totalSize += folderData.totalSize
-                    totalDuration += folderData.totalDuration
-                    if (folderData.lastModified > lastModified) {
-                        lastModified = folderData.lastModified
-                    }
-                    hasSubfolders = true
-                }
-            }
-            
-            if (totalCount > 0) {
-                folders[parentPath] = FolderData(
-                    path = parentPath,
-                    name = File(parentPath).name,
-                    videoCount = totalCount,
-                    totalSize = totalSize,
-                    totalDuration = totalDuration,
-                    lastModified = lastModified,
-                    hasSubfolders = hasSubfolders
-                )
-            }
+
+        val aggregated = allPaths.associateWith { path ->
+            folders[path] ?: FolderData(
+                path = path,
+                name = File(path).name,
+                videoCount = 0,
+                totalSize = 0L,
+                totalDuration = 0L,
+                lastModified = 0L,
+                hasSubfolders = false,
+            )
+        }.toMutableMap()
+
+        val sortedPaths = allPaths.sortedByDescending { it.count { c -> c == File.separatorChar } }
+        for (path in sortedPaths) {
+            val parentPath = File(path).parent ?: continue
+            val childData = aggregated[path] ?: continue
+            val parentData = aggregated[parentPath] ?: continue
+
+            aggregated[parentPath] = parentData.copy(
+                videoCount = parentData.videoCount + childData.videoCount,
+                totalSize = parentData.totalSize + childData.totalSize,
+                totalDuration = parentData.totalDuration + childData.totalDuration,
+                lastModified = maxOf(parentData.lastModified, childData.lastModified),
+                hasSubfolders = true,
+            )
         }
+
+        folders.clear()
+        aggregated.values
+            .filter { it.videoCount > 0 }
+            .forEach { folderData ->
+                folders[folderData.path] = folderData
+            }
     }
 }

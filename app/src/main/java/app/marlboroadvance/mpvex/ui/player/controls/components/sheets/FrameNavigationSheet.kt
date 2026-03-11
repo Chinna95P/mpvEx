@@ -118,12 +118,8 @@ fun FrameNavigationSheet(
     currentOnPause()
   }
 
-  // Continuously update frame info as video plays
-  LaunchedEffect(Unit) {
-    while (true) {
-      currentOnUpdateFrameInfo()
-      delay(100L)
-    }
+  LaunchedEffect(pos, currentFrame, totalFrames) {
+    currentOnUpdateFrameInfo()
   }
 
   // Only resume playback when closing if it wasn't paused initially
