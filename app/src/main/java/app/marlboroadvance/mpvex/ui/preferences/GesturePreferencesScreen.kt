@@ -268,6 +268,21 @@ object GesturePreferencesScreen : Screen {
             },
           )
 
+          PreferenceDivider()
+
+          val centerVerticalSubtitlePositionGesture by preferences.centerVerticalSubtitlePositionGesture.collectAsState()
+          SwitchPreference(
+            value = centerVerticalSubtitlePositionGesture,
+            onValueChange = { preferences.centerVerticalSubtitlePositionGesture.set(it) },
+            title = { Text(text = stringResource(R.string.pref_gesture_center_vertical_subtitle_position_title)) },
+            summary = {
+              Text(
+                text = stringResource(R.string.pref_gesture_center_vertical_subtitle_position_summary),
+                color = MaterialTheme.colorScheme.outline,
+              )
+            },
+          )
+
           val doubleTapKeyCodes =
             listOf(
               CustomKeyCodes.DoubleTapLeft,

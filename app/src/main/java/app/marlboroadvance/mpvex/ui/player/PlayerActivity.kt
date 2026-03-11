@@ -1,5 +1,6 @@
 ﻿package app.marlboroadvance.mpvex.ui.player
 
+import android.app.KeyguardManager
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
@@ -229,9 +230,11 @@ class PlayerActivity :
   private var isUserFinishing = false
   private var isManualBackgroundPlayback = false // Track manual background playback trigger
   private var noisyReceiverRegistered = false
+  private var screenStateReceiverRegistered = false
   private var mpvInitialized = false // Track MPV initialization state
   private var savePlaybackStateJob: kotlinx.coroutines.Job? = null // Track ongoing save job
   private var wasPlayingBeforePause = false // Track if video was playing before pause
+  private var shouldResumeAfterScreenUnlock = false
 
   // ==================== Background Playback ====================
 
@@ -292,6 +295,19 @@ class PlayerActivity :
       }
     }
 
+  private val screenStateReceiver =
+    object : BroadcastReceiver() {
+      override fun onReceive(
+        context: Context?,
+        intent: Intent?,
+      ) {
+        if (intent?.action == Intent.ACTION_SCREEN_OFF) {
+          wasPlayingBeforePause = !(viewModel.paused ?: true)
+          shouldResumeAfterScreenUnlock = shouldAutoplayAfterScreenUnlock()
+        }
+      }
+    }
+
   /**
    * Listener for audio focus changes.
    */
@@ -345,6 +361,7 @@ class PlayerActivity :
     setupPlayerControls()
     setupPipHelper()
     setupMediaSession()
+    registerScreenStateReceiver()
 
     playlistId = intent.getIntExtra("playlist_id", -1).takeIf { it != -1 }
     playlistIndex = intent.getIntExtra("playlist_index", 0)
@@ -668,6 +685,28 @@ class PlayerActivity :
         unregisterReceiver(noisyReceiver)
         noisyReceiverRegistered = false
       }
+    }
+
+    if (screenStateReceiverRegistered) {
+      runCatching {
+        unregisterReceiver(screenStateReceiver)
+        screenStateReceiverRegistered = false
+      }
+    }
+  }
+
+  private fun registerScreenStateReceiver() {
+    if (screenStateReceiverRegistered) return
+
+    runCatching {
+      val filter =
+        IntentFilter().apply {
+          addAction(Intent.ACTION_SCREEN_OFF)
+        }
+      registerReceiver(screenStateReceiver, filter)
+      screenStateReceiverRegistered = true
+    }.onFailure { e ->
+      Log.e(TAG, "Error registering screen state receiver", e)
     }
   }
 
@@ -1234,6 +1273,7 @@ class PlayerActivity :
   override fun onResume() {
     super.onResume()
     updateVolume()
+    resumePlaybackAfterScreenUnlockIfNeeded()
   }
 
   /**
@@ -1250,6 +1290,28 @@ class PlayerActivity :
           viewModel.changeMPVVolumeTo(MAX_MPV_VOLUME)
         }
       }
+    }
+  }
+
+  private fun shouldAutoplayAfterScreenUnlock(): Boolean {
+    val backgroundPlaybackActive =
+      isManualBackgroundPlayback || audioPreferences.automaticBackgroundPlayback.get()
+
+    return playerPreferences.autoplayAfterScreenUnlock.get() &&
+      wasPlayingBeforePause &&
+      !backgroundPlaybackActive &&
+      !isInPictureInPictureMode &&
+      !isUserFinishing &&
+      !isFinishing
+  }
+
+  private fun resumePlaybackAfterScreenUnlockIfNeeded() {
+    if (!shouldResumeAfterScreenUnlock || keyguardManager.isDeviceLocked) return
+
+    shouldResumeAfterScreenUnlock = false
+    wasPlayingBeforePause = false
+    if (viewModel.paused == true) {
+      viewModel.unpause()
     }
   }
 
@@ -1923,6 +1985,7 @@ class PlayerActivity :
     }
 
     applySubtitlePreferences()
+    viewModel.restoreSavedVideoAspect(showUpdate = false)
 
     // Don't force media-title for m3u/m3u8 streams - let MPV provide it
     if (!isCurrentStreamM3U()) {
@@ -2127,17 +2190,16 @@ class PlayerActivity :
     MPVLib.setPropertyString("sub-back-color", subtitlesPreferences.backgroundColor.get().toColorHexString())
 
     // Miscellaneous settings
-    val overrideAssSubs = subtitlesPreferences.overrideAssSubs.get()
-    MPVLib.setPropertyString("sub-ass-override", if (overrideAssSubs) "force" else "scale")
-    MPVLib.setPropertyString("secondary-sub-ass-override", if (overrideAssSubs) "force" else "scale")
-
     val scaleByWindow = subtitlesPreferences.scaleByWindow.get()
     val scaleValue = if (scaleByWindow) "yes" else "no"
     MPVLib.setPropertyString("sub-scale-by-window", scaleValue)
     MPVLib.setPropertyString("sub-use-margins", scaleValue)
 
     MPVLib.setPropertyFloat("sub-scale", subtitlesPreferences.subScale.get())
-    MPVLib.setPropertyInt("sub-pos", subtitlesPreferences.subPos.get())
+    applySubtitleLayout(
+      primaryPosition = subtitlesPreferences.subPos.get(),
+      forceAssOverride = subtitlesPreferences.overrideAssSubs.get(),
+    )
 
     Log.d(TAG, "Applied subtitle preferences")
   }
@@ -2289,6 +2351,11 @@ class PlayerActivity :
       player.secondarySid = state.secondarySid
       Log.d(TAG, "Restored secondary subtitle track: ${state.secondarySid} (user selection)")
     }
+
+    applySubtitleLayout(
+      primaryPosition = subtitlesPreferences.subPos.get(),
+      forceAssOverride = subtitlesPreferences.overrideAssSubs.get(),
+    )
 
     if (state.aid > 0) {
       player.aid = state.aid
@@ -3010,6 +3077,8 @@ class PlayerActivity :
     get() = contentResolver
   override val audioManager: AudioManager
     get() = getSystemService(AUDIO_SERVICE) as AudioManager
+  private val keyguardManager: KeyguardManager
+    get() = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
   override var hostRequestedOrientation: Int
     get() = requestedOrientation
     set(value) {

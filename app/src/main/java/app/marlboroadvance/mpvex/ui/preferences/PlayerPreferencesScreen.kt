@@ -119,13 +119,13 @@ object PlayerPreferencesScreen : Screen {
               SwitchPreference(
                 value = autoplayNextVideo,
                 onValueChange = preferences.autoplayNextVideo::set,
-                title = { Text(text = "Autoplay next video") },
+                title = { Text(text = stringResource(R.string.pref_autoplay_next_video_title)) },
                 summary = {
                   Text(
                     text = if (autoplayNextVideo)
-                      "Automatically play next video when current ends"
+                      stringResource(R.string.pref_autoplay_next_video_summary)
                     else
-                      "Stay on current video when it ends",
+                      stringResource(R.string.pref_autoplay_next_video_summary_disabled),
                     color = MaterialTheme.colorScheme.outline,
                   )
                 },
@@ -179,13 +179,31 @@ object PlayerPreferencesScreen : Screen {
               SwitchPreference(
                 value = keepScreenOnWhenPaused,
                 onValueChange = preferences.keepScreenOnWhenPaused::set,
-                title = { Text("Keep screen on when paused") },
+                title = { Text(stringResource(R.string.pref_player_keep_screen_on_when_paused_title)) },
                 summary = {
                   Text(
                     text = if (keepScreenOnWhenPaused)
-                      "Screen stays awake while video is paused"
+                      stringResource(R.string.pref_player_keep_screen_on_when_paused_summary)
                     else
-                      "Screen can turn off while video is paused",
+                      stringResource(R.string.pref_player_keep_screen_on_when_paused_summary_disabled),
+                    color = MaterialTheme.colorScheme.outline,
+                  )
+                },
+              )
+
+              PreferenceDivider()
+
+              val autoplayAfterScreenUnlock by preferences.autoplayAfterScreenUnlock.collectAsState()
+              SwitchPreference(
+                value = autoplayAfterScreenUnlock,
+                onValueChange = preferences.autoplayAfterScreenUnlock::set,
+                title = { Text(stringResource(R.string.pref_player_autoplay_after_screen_unlock_title)) },
+                summary = {
+                  Text(
+                    text = if (autoplayAfterScreenUnlock)
+                      stringResource(R.string.pref_player_autoplay_after_screen_unlock_summary)
+                    else
+                      stringResource(R.string.pref_player_autoplay_after_screen_unlock_summary_disabled),
                     color = MaterialTheme.colorScheme.outline,
                   )
                 },

@@ -150,15 +150,6 @@ class MPVView(
     setupAudioOptions()
   }
 
-  private fun applyHdrScreenOutputOptions(
-    enabled: Boolean,
-    pipelineReady: Boolean,
-  ) {
-    val hintValue = if (enabled && pipelineReady) "yes" else "no"
-    MPVLib.setOptionString("target-colorspace-hint-mode", "source")
-    MPVLib.setOptionString("target-colorspace-hint", hintValue)
-  }
-
   override fun observeProperties() {
     for ((name, format) in observedProps) MPVLib.observeProperty(name, format)
   }
@@ -297,7 +288,8 @@ class MPVView(
     val borderSize = subtitlesPreferences.borderSize.get().toString()
     val borderStyle = subtitlesPreferences.borderStyle.get().value
     val shadowOffset = subtitlesPreferences.shadowOffset.get().toString()
-    val subPos = subtitlesPreferences.subPos.get().toString()
+    val subPos = clampSubtitlePosition(subtitlesPreferences.subPos.get())
+    val secondarySubPos = calculateSecondarySubtitlePosition(subPos)
     val subScale = subtitlesPreferences.subScale.get().toString()
 
     MPVLib.setOptionString("sub-font-size", fontSize)
@@ -311,7 +303,7 @@ class MPVView(
     MPVLib.setOptionString("sub-border-style", borderStyle)
     MPVLib.setOptionString("sub-shadow-offset", shadowOffset)
     MPVLib.setOptionString("sub-scale", subScale)
-    MPVLib.setOptionString("sub-pos", subPos)
+    MPVLib.setOptionString("sub-pos", subPos.toString())
     
     MPVLib.setOptionString("secondary-sub-font-size", fontSize)
     MPVLib.setOptionString("secondary-sub-bold", bold)
@@ -324,7 +316,7 @@ class MPVView(
     MPVLib.setOptionString("secondary-sub-border-style", borderStyle)
     MPVLib.setOptionString("secondary-sub-shadow-offset", shadowOffset)
     MPVLib.setOptionString("secondary-sub-scale", subScale)
-    MPVLib.setOptionString("secondary-sub-pos", subPos)
+    MPVLib.setOptionString("secondary-sub-pos", secondarySubPos.toString())
 
     val scaleByWindow = if (subtitlesPreferences.scaleByWindow.get()) "yes" else "no"
     MPVLib.setOptionString("sub-scale-by-window", scaleByWindow)

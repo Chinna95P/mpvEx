@@ -88,8 +88,15 @@
   <string name="pref_autoplay_summary">Show next/previous buttons for all videos in folder</string>
   <string name="pref_autoplay_next_video_title">Autoplay next video</string>
   <string name="pref_autoplay_next_video_summary">Automatically play next video when current ends</string>
+  <string name="pref_autoplay_next_video_summary_disabled">Stay on current video when it ends</string>
   <string name="pref_auto_pip_title">Auto Picture-in-Picture</string>
   <string name="pref_auto_pip_summary">Automatically enter PIP mode when pressing home or back</string>
+  <string name="pref_player_keep_screen_on_when_paused_title">Keep screen on when paused</string>
+  <string name="pref_player_keep_screen_on_when_paused_summary">Screen stays awake while video is paused</string>
+  <string name="pref_player_keep_screen_on_when_paused_summary_disabled">Screen can turn off while video is paused</string>
+  <string name="pref_player_autoplay_after_screen_unlock_title">Autoplay after screen unlock</string>
+  <string name="pref_player_autoplay_after_screen_unlock_summary">Resume video automatically after unlocking if it was playing before the screen locked</string>
+  <string name="pref_player_autoplay_after_screen_unlock_summary_disabled">Keep video paused after the screen is unlocked</string>
   <string name="pref_dynamic_speed_overlay_title">Dynamic Speed Overlay</string>
   <string name="pref_dynamic_speed_overlay_summary">Show advance overlay for speed control during long press and swipe</string>
   <string name="pref_show_navigation_bar_title">Show navigation bar with controls</string>
@@ -166,6 +173,8 @@
   <string name="pref_gesture_double_tap_right_title">Double tap (right)</string>
   <string name="pref_gesture_use_single_tap_for_center_title">Use single tap for center gesture</string>
   <string name="pref_gesture_use_single_tap_for_center_summary">Use a single tap in the center for gestures (like play/pause) instead of a double tap.</string>
+  <string name="pref_gesture_center_vertical_subtitle_position_title">Hold and drag moves subtitles</string>
+  <string name="pref_gesture_center_vertical_subtitle_position_summary">Hold in the center, then drag up or down to move subtitle position</string>
   <string name="pref_gesture_view_title">View</string>
   <string name="pref_gesture_double_tap_custom_info">You can bind custom actions to these gestures in input.conf using the following key codes:\n\nLeft: MBTN_LEFT_DBL\nCenter: MBTN_MID_DBL\nRight: MBTN_RIGHT_DBL</string>
   <string name="pref_gesture_media_title">Media controls</string>

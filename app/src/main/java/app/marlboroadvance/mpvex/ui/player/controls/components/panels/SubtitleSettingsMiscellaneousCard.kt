@@ -26,6 +26,7 @@ import app.marlboroadvance.mpvex.preferences.SubtitlesPreferences
 import app.marlboroadvance.mpvex.preferences.preference.deleteAndGet
 import app.marlboroadvance.mpvex.presentation.components.ExpandableCard
 import app.marlboroadvance.mpvex.presentation.components.SliderItem
+import app.marlboroadvance.mpvex.ui.player.applySubtitleLayout
 import app.marlboroadvance.mpvex.ui.player.controls.CARDS_MAX_WIDTH
 import app.marlboroadvance.mpvex.ui.player.controls.components.sheets.toFixed
 import app.marlboroadvance.mpvex.ui.player.controls.panelCardsColors
@@ -61,8 +62,7 @@ fun SubtitlesMiscellaneousCard(modifier: Modifier = Modifier) {
           onValueChange = {
             overrideAssSubs = it
             preferences.overrideAssSubs.set(it)
-            MPVLib.setPropertyString("sub-ass-override", if (it) "force" else "scale")
-            MPVLib.setPropertyString("secondary-sub-ass-override", if (it) "force" else "scale")
+            applySubtitleLayout(MPVLib.getPropertyInt("sub-pos") ?: preferences.subPos.get(), it)
           },
           { Text(stringResource(R.string.player_sheets_sub_override_ass)) },
         )
@@ -105,7 +105,7 @@ fun SubtitlesMiscellaneousCard(modifier: Modifier = Modifier) {
           valueText = (subPos ?: preferences.subPos.get()).toString(),
           onChange = {
             preferences.subPos.set(it)
-            MPVLib.setPropertyInt("sub-pos", it)
+            applySubtitleLayout(it, preferences.overrideAssSubs.get())
           },
           max = 150,
           icon = {
@@ -124,16 +124,13 @@ fun SubtitlesMiscellaneousCard(modifier: Modifier = Modifier) {
         ) {
           TextButton(
             onClick = {
-              preferences.subPos.deleteAndGet().let {
-                MPVLib.setPropertyInt("sub-pos", it)
-              }
+              val defaultSubPos = preferences.subPos.deleteAndGet()
               preferences.subScale.deleteAndGet().let {
                 MPVLib.setPropertyFloat("sub-scale", it)
               }
               val defaultOverride = preferences.overrideAssSubs.deleteAndGet()
               overrideAssSubs = defaultOverride
-              MPVLib.setPropertyString("sub-ass-override", if (defaultOverride) "force" else "scale")
-              MPVLib.setPropertyString("secondary-sub-ass-override", if (defaultOverride) "force" else "scale")
+              applySubtitleLayout(defaultSubPos, defaultOverride)
               val defaultScaleByWindow = preferences.scaleByWindow.deleteAndGet()
               scaleByWindow = defaultScaleByWindow
               val scaleValue = if (defaultScaleByWindow) "yes" else "no"

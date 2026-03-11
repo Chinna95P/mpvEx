@@ -281,7 +281,7 @@ class PlayerViewModel(
   private val _videoZoom = MutableStateFlow(0f)
   val videoZoom: StateFlow<Float> = _videoZoom.asStateFlow()
 
-  // Video aspect ratio (not persisted, resets to Fit for each video)
+  // Video aspect ratio (persisted in player preferences)
   private val _videoAspect = MutableStateFlow(VideoAspect.Fit)
   val videoAspect: StateFlow<VideoAspect> = _videoAspect.asStateFlow()
 
@@ -855,15 +855,8 @@ class PlayerViewModel(
       // Scan for previously downloaded/added subtitles
       scanLocalSubtitles(mediaTitle)
 
-      // --- ADDED: Reset visual states for the new file for Ambient Mode Function by @Chinna95P ---
-      
-      // 1. Reset Aspect Ratio UI state and MPV properties to "Fit"
-      _videoAspect.value = VideoAspect.Fit
-      _currentAspectRatio.value = -1.0
-      runCatching {
-        MPVLib.setPropertyDouble("panscan", 0.0)
-        MPVLib.setPropertyDouble("video-aspect-override", -1.0)
-      }
+      // Restore persisted aspect mode, while zoom and pan continue to reset per file.
+      restoreSavedVideoAspect(showUpdate = false)
 
       // 2. Reset Video Zoom
       if (_videoZoom.value != 0f) {
@@ -1041,6 +1034,8 @@ class PlayerViewModel(
       secondarySid <= 0 -> MPVLib.setPropertyInt("secondary-sid", id)
       else -> MPVLib.setPropertyInt("sid", id)
     }
+
+    syncSubtitleLayout()
   }
 
   fun isSubtitleSelected(id: Int): Boolean {
@@ -1342,6 +1337,17 @@ class PlayerViewModel(
     volumeSliderTimestamp.value = System.currentTimeMillis()
   }
 
+  fun changeSubtitlePositionTo(position: Int) {
+    val newPosition = clampSubtitlePosition(position)
+    subtitlesPreferences.subPos.set(newPosition)
+    syncSubtitleLayout(newPosition)
+    playerUpdate.value = PlayerUpdates.ShowText("Subtitle Position: $newPosition")
+  }
+
+  private fun syncSubtitleLayout(primaryPosition: Int = subtitlesPreferences.subPos.get()) {
+    applySubtitleLayout(primaryPosition, subtitlesPreferences.overrideAssSubs.get())
+  }
+
   private fun syncCurrentSystemVolume(): Int {
     val systemVolume = host.audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
     currentVolume.value = systemVolume
@@ -1393,6 +1399,8 @@ class PlayerViewModel(
     }
 
     // Update the state
+    playerPreferences.lastVideoAspect.set(aspect)
+    playerPreferences.lastCustomAspectRatio.set(-1f)
     _videoAspect.value = aspect
     _currentAspectRatio.value = -1.0 // Reset custom ratio when using standard modes
 
@@ -1402,11 +1410,27 @@ class PlayerViewModel(
     }
   }
 
-  fun setCustomAspectRatio(ratio: Double) {
+  fun setCustomAspectRatio(
+    ratio: Double,
+    showUpdate: Boolean = true,
+  ) {
     MPVLib.setPropertyDouble("panscan", 0.0)
     MPVLib.setPropertyDouble("video-aspect-override", ratio)
+    playerPreferences.lastCustomAspectRatio.set(ratio.toFloat())
     _currentAspectRatio.value = ratio
-    playerUpdate.value = PlayerUpdates.AspectRatio
+    if (showUpdate) {
+      playerUpdate.value = PlayerUpdates.AspectRatio
+    }
+  }
+
+  fun restoreSavedVideoAspect(showUpdate: Boolean = false) {
+    val customAspectRatio = playerPreferences.lastCustomAspectRatio.get()
+    if (customAspectRatio > 0f) {
+      setCustomAspectRatio(customAspectRatio.toDouble(), showUpdate)
+      return
+    }
+
+    changeVideoAspect(playerPreferences.lastVideoAspect.get(), showUpdate)
   }
 
   // ==================== Screen Rotation ====================
@@ -2279,14 +2303,12 @@ class PlayerViewModel(
     decoderPreferences.useVulkan.get() && decoderPreferences.gpuNext.get()
 
   private fun applyHdrScreenOutput(enabled: Boolean) {
-    val hintValue = if (enabled && isHdrScreenOutputAvailable()) "yes" else "no"
+    val pipelineReady = isHdrScreenOutputAvailable()
     runCatching {
-      MPVLib.setOptionString("target-colorspace-hint-mode", "source")
-      MPVLib.setOptionString("target-colorspace-hint", hintValue)
-      MPVLib.setPropertyString("target-colorspace-hint-mode", "source")
-      MPVLib.setPropertyString("target-colorspace-hint", hintValue)
+      applyHdrScreenOutputOptions(enabled, pipelineReady)
+      applyHdrScreenOutputProperties(enabled, pipelineReady)
     }.onFailure { e ->
-      Log.e(TAG, "Error applying HDR screen output: $hintValue", e)
+      Log.e(TAG, "Error applying HDR screen output: enabled=$enabled, pipelineReady=$pipelineReady", e)
     }
   }
 
