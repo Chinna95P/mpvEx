@@ -48,6 +48,7 @@ import app.marlboroadvance.mpvex.preferences.AdvancedPreferences
 import app.marlboroadvance.mpvex.preferences.preference.collectAsState
 import app.marlboroadvance.mpvex.presentation.Screen
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
+import app.marlboroadvance.mpvex.ui.utils.popSafely
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -191,7 +192,7 @@ object LuaScriptsScreen : Screen {
             )
           },
           navigationIcon = {
-            IconButton(onClick = backStack::removeLastOrNull) {
+            IconButton(onClick = { backStack.popSafely() }) {
               Icon(
                 Icons.Default.ArrowBack,
                 contentDescription = "Back",
@@ -284,6 +285,3 @@ object LuaScriptsScreen : Screen {
     }
   }
 }
-
-
-

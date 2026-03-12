@@ -40,6 +40,7 @@ import app.marlboroadvance.mpvex.presentation.Screen
 import app.marlboroadvance.mpvex.ui.player.CustomKeyCodes
 import app.marlboroadvance.mpvex.ui.player.SingleActionGesture
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
+import app.marlboroadvance.mpvex.ui.utils.popSafely
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.serialization.Serializable
 import me.zhanghai.compose.preference.FooterPreference
@@ -73,7 +74,7 @@ object GesturePreferencesScreen : Screen {
             ) 
           },
           navigationIcon = {
-            IconButton(onClick = backstack::removeLastOrNull) {
+            IconButton(onClick = { backstack.popSafely() }) {
               Icon(
                 Icons.Default.ArrowBack, 
                 contentDescription = null,
@@ -413,6 +414,3 @@ object GesturePreferencesScreen : Screen {
     }
   }
 }
-
-
-

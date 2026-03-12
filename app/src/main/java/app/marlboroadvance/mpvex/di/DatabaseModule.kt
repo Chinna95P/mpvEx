@@ -451,6 +451,47 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
         android.util.Log.d("Migration_8_9", "Schema is correct, no repair needed")
       }
       
+      // Add M3U-specific metadata columns to PlaylistItemEntity
+      android.util.Log.d("Migration_8_9", "Adding M3U metadata columns to PlaylistItemEntity")
+
+      val itemCursor = db.query("PRAGMA table_info(PlaylistItemEntity)")
+      val itemColumns = mutableSetOf<String>()
+      while (itemCursor.moveToNext()) {
+        itemColumns.add(itemCursor.getString(itemCursor.getColumnIndexOrThrow("name")))
+      }
+      itemCursor.close()
+
+      if (!itemColumns.contains("tvgId"))
+        db.execSQL("ALTER TABLE `PlaylistItemEntity` ADD COLUMN `tvgId` TEXT DEFAULT NULL")
+      if (!itemColumns.contains("tvgLogo"))
+        db.execSQL("ALTER TABLE `PlaylistItemEntity` ADD COLUMN `tvgLogo` TEXT DEFAULT NULL")
+      if (!itemColumns.contains("groupTitle"))
+        db.execSQL("ALTER TABLE `PlaylistItemEntity` ADD COLUMN `groupTitle` TEXT DEFAULT NULL")
+      if (!itemColumns.contains("licenseType"))
+        db.execSQL("ALTER TABLE `PlaylistItemEntity` ADD COLUMN `licenseType` TEXT DEFAULT NULL")
+      if (!itemColumns.contains("licenseKey"))
+        db.execSQL("ALTER TABLE `PlaylistItemEntity` ADD COLUMN `licenseKey` TEXT DEFAULT NULL")
+      if (!itemColumns.contains("userAgent"))
+        db.execSQL("ALTER TABLE `PlaylistItemEntity` ADD COLUMN `userAgent` TEXT DEFAULT NULL")
+      if (!itemColumns.contains("isFavorite"))
+        db.execSQL("ALTER TABLE `PlaylistItemEntity` ADD COLUMN `isFavorite` INTEGER NOT NULL DEFAULT 0")
+
+      // Create index for isFavorite
+      db.execSQL(
+        "CREATE INDEX IF NOT EXISTS `index_PlaylistItemEntity_isFavorite` ON `PlaylistItemEntity` (`isFavorite`)"
+      )
+
+      // Add userAgent column to PlaylistEntity
+      val playlistCursor = db.query("PRAGMA table_info(PlaylistEntity)")
+      val playlistColumns = mutableSetOf<String>()
+      while (playlistCursor.moveToNext()) {
+        playlistColumns.add(playlistCursor.getString(playlistCursor.getColumnIndexOrThrow("name")))
+      }
+      playlistCursor.close()
+
+      if (!playlistColumns.contains("userAgent"))
+        db.execSQL("ALTER TABLE `PlaylistEntity` ADD COLUMN `userAgent` TEXT DEFAULT NULL")
+
       android.util.Log.d("Migration_8_9", "Migration completed successfully")
     } catch (e: Exception) {
       android.util.Log.e("Migration_8_9", "Migration failed", e)

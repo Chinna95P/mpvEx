@@ -7,14 +7,14 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.slideIn
-import androidx.compose.animation.slideOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -23,10 +23,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.IntOffset
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavEntry
@@ -42,6 +41,7 @@ import app.marlboroadvance.mpvex.ui.browser.MainScreen
 import app.marlboroadvance.mpvex.ui.theme.DarkMode
 import app.marlboroadvance.mpvex.ui.theme.MpvexTheme
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
+import app.marlboroadvance.mpvex.ui.utils.popSafely
 import app.marlboroadvance.mpvex.utils.permission.PermissionUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -49,6 +49,28 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.withContext
 import org.koin.android.ext.android.inject
+
+private const val NAV_TRANSITION_DURATION_MS = 180
+
+private fun forwardNavTransition(): ContentTransform =
+  slideInHorizontally(
+    animationSpec = tween(NAV_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+    initialOffsetX = { fullWidth -> fullWidth },
+  ) togetherWith
+    slideOutHorizontally(
+      animationSpec = tween(NAV_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+      targetOffsetX = { fullWidth -> -fullWidth / 8 },
+    )
+
+private fun backwardNavTransition(): ContentTransform =
+  slideInHorizontally(
+    animationSpec = tween(NAV_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+    initialOffsetX = { fullWidth -> -fullWidth / 5 },
+  ) togetherWith
+    slideOutHorizontally(
+      animationSpec = tween(NAV_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+      targetOffsetX = { fullWidth -> fullWidth },
+    )
 
 /**
  * Main entry point for the application
@@ -93,7 +115,7 @@ class MainActivity : ComponentActivity() {
       }
 
       MpvexTheme {
-        Surface {
+        Surface(modifier = Modifier.fillMaxSize()) {
           Navigator()
         }
       }
@@ -170,46 +192,39 @@ class MainActivity : ComponentActivity() {
     CompositionLocalProvider(
       LocalBackStack provides typedBackstack
     ) {
-      NavDisplay(
-        backStack = typedBackstack,
-        onBack = { typedBackstack.removeLastOrNull() },
-        entryProvider = { route -> NavEntry(route) { route.Content() } },
-        popTransitionSpec = {
-          (
-            fadeIn(animationSpec = tween(220)) +
-              slideIn(animationSpec = tween(220)) { IntOffset(-it.width / 2, 0) }
-          ) togetherWith (
-              fadeOut(animationSpec = tween(220)) +
-                slideOut(animationSpec = tween(220)) { IntOffset(it.width / 2, 0) }
-          )
-        },
-        transitionSpec = {
-          (
-            fadeIn(animationSpec = tween(220)) +
-              slideIn(animationSpec = tween(220)) { IntOffset(it.width / 2, 0) }
-          ) togetherWith (
-              fadeOut(animationSpec = tween(220)) +
-                slideOut(animationSpec = tween(220)) { IntOffset(-it.width / 2, 0) }
-          )
-        },
-        predictivePopTransitionSpec = {
-          (
-            fadeIn(animationSpec = tween(220)) +
-              scaleIn(
-                animationSpec = tween(220, delayMillis = 30),
-                initialScale = .9f,
-                TransformOrigin(-1f, .5f),
-              )
-          ) togetherWith (
-              fadeOut(animationSpec = tween(220)) +
-                scaleOut(
-                  animationSpec = tween(220, delayMillis = 30),
-                  targetScale = .9f,
-                  TransformOrigin(-1f, .5f),
-                )
-          )
-        },
-      )
+      val hasNavEntries = typedBackstack.size > 0
+
+      LaunchedEffect(hasNavEntries) {
+        if (!hasNavEntries) {
+          typedBackstack.add(MainScreen)
+        }
+      }
+
+      if (hasNavEntries) {
+        NavDisplay(
+          modifier = Modifier.fillMaxSize(),
+          backStack = typedBackstack,
+          onBack = {
+            if (typedBackstack.size <= 1 || !typedBackstack.popSafely()) {
+              this@MainActivity.finish()
+            }
+          },
+          entryProvider = { route ->
+            NavEntry(route) {
+              Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background,
+              ) {
+                route.Content()
+              }
+            }
+          },
+          sizeTransform = null,
+          transitionSpec = { forwardNavTransition() },
+          popTransitionSpec = { backwardNavTransition() },
+          predictivePopTransitionSpec = { _: Int -> backwardNavTransition() },
+        )
+      }
 
       // Display Update Dialog when appropriate (only if update feature is enabled)
       if (BuildConfig.ENABLE_UPDATE_FEATURE && updateViewModel != null) {

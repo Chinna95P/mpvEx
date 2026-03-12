@@ -11,6 +11,11 @@ import app.marlboroadvance.mpvex.utils.media.M3UPlaylistItem
 import kotlinx.coroutines.flow.Flow
 
 class PlaylistRepository(private val playlistDao: PlaylistDao) {
+
+  companion object {
+    private const val INSERT_CHUNK_SIZE = 500
+  }
+
   // Playlist operations
   suspend fun createPlaylist(name: String): Long {
     val now = System.currentTimeMillis()
@@ -51,7 +56,6 @@ class PlaylistRepository(private val playlistDao: PlaylistDao) {
         addedAt = System.currentTimeMillis(),
       ),
     )
-    // Update playlist's updatedAt timestamp
     getPlaylistById(playlistId)?.let { playlist ->
       updatePlaylist(playlist)
     }
@@ -69,8 +73,7 @@ class PlaylistRepository(private val playlistDao: PlaylistDao) {
         addedAt = now,
       )
     }
-    playlistDao.insertPlaylistItems(playlistItems)
-    // Update playlist's updatedAt timestamp
+    insertInChunks(playlistItems)
     getPlaylistById(playlistId)?.let { playlist ->
       updatePlaylist(playlist)
     }
@@ -78,7 +81,6 @@ class PlaylistRepository(private val playlistDao: PlaylistDao) {
 
   suspend fun removeItemFromPlaylist(item: PlaylistItemEntity) {
     playlistDao.deletePlaylistItem(item)
-    // Update playlist's updatedAt timestamp
     getPlaylistById(item.playlistId)?.let { playlist ->
       updatePlaylist(playlist)
     }
@@ -86,9 +88,7 @@ class PlaylistRepository(private val playlistDao: PlaylistDao) {
 
   suspend fun removeItemsFromPlaylist(items: List<PlaylistItemEntity>) {
     if (items.isEmpty()) return
-    // Use batch delete for better performance and to avoid race conditions
     playlistDao.deletePlaylistItems(items)
-    // Update playlist's updatedAt timestamp
     getPlaylistById(items.first().playlistId)?.let { playlist ->
       updatePlaylist(playlist)
     }
@@ -124,39 +124,29 @@ class PlaylistRepository(private val playlistDao: PlaylistDao) {
     }
   }
 
-  // Helper to get playlist items as URIs for playback
   suspend fun getPlaylistItemsAsUris(playlistId: Int): List<Uri> {
     return getPlaylistItems(playlistId).map { Uri.parse(it.filePath) }
   }
 
   /**
    * Get a windowed subset of playlist items as URIs to avoid loading huge playlists at once.
-   * This prevents ANR issues and TransactionTooLargeException with large M3U playlists.
-   * 
-   * @param playlistId The playlist ID
-   * @param centerIndex The index to center the window around (typically current playing position)
-   * @param windowSize Total number of items to load (default 100)
-   * @return List of URIs in the windowed range
    */
   suspend fun getPlaylistItemsWindowAsUris(
-    playlistId: Int, 
-    centerIndex: Int = 0, 
-    windowSize: Int = 100
+    playlistId: Int,
+    centerIndex: Int = 0,
+    windowSize: Int = 100,
   ): List<Uri> {
     val totalCount = getPlaylistItemCount(playlistId)
     if (totalCount == 0) return emptyList()
-    
-    // If playlist is small enough, return all items
+
     if (totalCount <= windowSize) {
       return getPlaylistItemsAsUris(playlistId)
     }
-    
-    // Calculate window boundaries
+
     val halfWindow = windowSize / 2
     val startPosition = (centerIndex - halfWindow).coerceAtLeast(0)
     val endPosition = (startPosition + windowSize).coerceAtMost(totalCount)
-    
-    // Get items in range
+
     return playlistDao.getPlaylistItemsInRange(playlistId, startPosition, endPosition)
       .map { Uri.parse(it.filePath) }
   }
@@ -178,11 +168,25 @@ class PlaylistRepository(private val playlistDao: PlaylistDao) {
     return playlistDao.getPlaylistItemByPath(playlistId, filePath)
   }
 
+  // Category / Favorites
+  fun observeDistinctCategories(playlistId: Int): Flow<List<String>> =
+    playlistDao.observeDistinctCategories(playlistId)
+
+  suspend fun getDistinctCategories(playlistId: Int): List<String> =
+    playlistDao.getDistinctCategories(playlistId)
+
+  fun observeFavoriteItems(playlistId: Int): Flow<List<PlaylistItemEntity>> =
+    playlistDao.observeFavoriteItems(playlistId)
+
+  suspend fun toggleFavorite(itemId: Int) = playlistDao.toggleFavorite(itemId)
+
+  suspend fun setFavorite(itemId: Int, isFavorite: Boolean) = playlistDao.setFavorite(itemId, isFavorite)
+
   // M3U Playlist operations
-  suspend fun createM3UPlaylist(url: String): Result<Long> {
+  suspend fun createM3UPlaylist(url: String, userAgent: String? = null): Result<Long> {
     return try {
-      val parseResult = M3UParser.parseFromUrl(url)
-      
+      val parseResult = M3UParser.parseFromUrl(url, userAgent)
+
       when (parseResult) {
         is M3UParseResult.Success -> {
           val now = System.currentTimeMillis()
@@ -192,23 +196,16 @@ class PlaylistRepository(private val playlistDao: PlaylistDao) {
               createdAt = now,
               updatedAt = now,
               m3uSourceUrl = url,
-              isM3uPlaylist = true
+              isM3uPlaylist = true,
+              userAgent = userAgent,
             )
           )
-          
-          // Add all items from the M3U playlist
+
           val items = parseResult.items.mapIndexed { index, m3uItem ->
-            PlaylistItemEntity(
-              playlistId = playlistId.toInt(),
-              filePath = m3uItem.url,
-              fileName = m3uItem.title ?: "Item ${index + 1}",
-              position = index,
-              addedAt = now
-            )
+            m3uItem.toEntity(playlistId.toInt(), index, now)
           }
-          
-          playlistDao.insertPlaylistItems(items)
-          
+
+          insertInChunks(items)
           Result.success(playlistId)
         }
         is M3UParseResult.Error -> {
@@ -223,7 +220,7 @@ class PlaylistRepository(private val playlistDao: PlaylistDao) {
   suspend fun createM3UPlaylistFromFile(context: Context, uri: Uri): Result<Long> {
     return try {
       val parseResult = M3UParser.parseFromUri(context, uri)
-      
+
       when (parseResult) {
         is M3UParseResult.Success -> {
           val now = System.currentTimeMillis()
@@ -232,24 +229,16 @@ class PlaylistRepository(private val playlistDao: PlaylistDao) {
               name = parseResult.playlistName,
               createdAt = now,
               updatedAt = now,
-              m3uSourceUrl = null, // Local file, no URL to refresh from
-              isM3uPlaylist = true
+              m3uSourceUrl = null,
+              isM3uPlaylist = true,
             )
           )
-          
-          // Add all items from the M3U playlist
+
           val items = parseResult.items.mapIndexed { index, m3uItem ->
-            PlaylistItemEntity(
-              playlistId = playlistId.toInt(),
-              filePath = m3uItem.url,
-              fileName = m3uItem.title ?: "Item ${index + 1}",
-              position = index,
-              addedAt = now
-            )
+            m3uItem.toEntity(playlistId.toInt(), index, now)
           }
-          
-          playlistDao.insertPlaylistItems(items)
-          
+
+          insertInChunks(items)
           Result.success(playlistId)
         }
         is M3UParseResult.Error -> {
@@ -265,33 +254,34 @@ class PlaylistRepository(private val playlistDao: PlaylistDao) {
     return try {
       val playlist = getPlaylistById(playlistId)
         ?: return Result.failure(Exception("Playlist not found"))
-      
+
       if (!playlist.isM3uPlaylist || playlist.m3uSourceUrl == null) {
         return Result.failure(Exception("Not an M3U playlist or no source URL available"))
       }
-      
-      val parseResult = M3UParser.parseFromUrl(playlist.m3uSourceUrl)
-      
+
+      val parseResult = M3UParser.parseFromUrl(playlist.m3uSourceUrl, playlist.userAgent)
+
       when (parseResult) {
         is M3UParseResult.Success -> {
-          // Clear existing items
+          // Preserve favorite URLs before clearing
+          val favoritePaths = playlistDao.getFavoriteFilePaths(playlistId).toSet()
+
           playlistDao.deleteAllItemsFromPlaylist(playlistId)
-          
-          // Add refreshed items
+
           val now = System.currentTimeMillis()
           val items = parseResult.items.mapIndexed { index, m3uItem ->
-            PlaylistItemEntity(
+            m3uItem.toEntity(
               playlistId = playlistId,
-              filePath = m3uItem.url,
-              fileName = m3uItem.title ?: "Item ${index + 1}",
               position = index,
-              addedAt = now
+              now = now,
+              // Restore favorite status for paths that were favorited before refresh
+              isFavorite = m3uItem.url in favoritePaths,
             )
           }
-          
-          playlistDao.insertPlaylistItems(items)
+
+          insertInChunks(items)
           updatePlaylist(playlist)
-          
+
           Result.success(Unit)
         }
         is M3UParseResult.Error -> {
@@ -302,4 +292,31 @@ class PlaylistRepository(private val playlistDao: PlaylistDao) {
       Result.failure(e)
     }
   }
+
+  // Batched insert to avoid SQLite transaction size limits on huge M3U playlists
+  private suspend fun insertInChunks(items: List<PlaylistItemEntity>) {
+    items.chunked(INSERT_CHUNK_SIZE).forEach { chunk ->
+      playlistDao.insertPlaylistItems(chunk)
+    }
+  }
 }
+
+private fun M3UPlaylistItem.toEntity(
+  playlistId: Int,
+  position: Int,
+  now: Long,
+  isFavorite: Boolean = false,
+): PlaylistItemEntity = PlaylistItemEntity(
+  playlistId = playlistId,
+  filePath = url,
+  fileName = title ?: tvgName ?: url.substringAfterLast('/').take(80).ifBlank { "Item ${position + 1}" },
+  position = position,
+  addedAt = now,
+  tvgId = tvgId,
+  tvgLogo = tvgLogo,
+  groupTitle = groupTitle,
+  licenseType = licenseType,
+  licenseKey = licenseKey,
+  userAgent = userAgent,
+  isFavorite = isFavorite,
+)

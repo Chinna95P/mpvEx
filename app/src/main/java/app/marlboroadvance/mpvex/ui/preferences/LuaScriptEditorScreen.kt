@@ -50,6 +50,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import app.marlboroadvance.mpvex.R
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
+import app.marlboroadvance.mpvex.ui.utils.popSafely
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -169,7 +170,7 @@ data class LuaScriptEditorScreen(
           withContext(Dispatchers.Main) {
             hasUnsavedChanges = false
             Toast.makeText(context, "$finalFileName saved successfully", Toast.LENGTH_SHORT).show()
-            backStack.removeLastOrNull()
+            backStack.popSafely()
           }
         } catch (e: Exception) {
           withContext(Dispatchers.Main) {
@@ -236,7 +237,7 @@ data class LuaScriptEditorScreen(
     
     fun deleteScript() {
       if (isNewScript || scriptName == null) {
-        backStack.removeLastOrNull()
+        backStack.popSafely()
         return
       }
       
@@ -262,7 +263,7 @@ data class LuaScriptEditorScreen(
                   
                   withContext(Dispatchers.Main) {
                     Toast.makeText(context, "$scriptName deleted", Toast.LENGTH_SHORT).show()
-                    backStack.removeLastOrNull()
+                    backStack.popSafely()
                   }
                 }
               }
@@ -322,7 +323,7 @@ data class LuaScriptEditorScreen(
           }
         },
         navigationIcon = {
-          IconButton(onClick = backStack::removeLastOrNull) {
+          IconButton(onClick = { backStack.popSafely() }) {
             Icon(
               Icons.Default.ArrowBack,
               contentDescription = "Back",
@@ -446,6 +447,3 @@ data class LuaScriptEditorScreen(
     }
   }
 }
-
-
-

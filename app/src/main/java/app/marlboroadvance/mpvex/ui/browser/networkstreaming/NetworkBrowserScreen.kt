@@ -44,6 +44,7 @@ import app.marlboroadvance.mpvex.ui.browser.components.BrowserTopBar
 import app.marlboroadvance.mpvex.ui.browser.states.EmptyState
 import app.marlboroadvance.mpvex.ui.preferences.PreferencesScreen
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
+import app.marlboroadvance.mpvex.ui.utils.popSafely
 import kotlinx.serialization.Serializable
 import my.nanihadesuka.compose.LazyColumnScrollbar
 import my.nanihadesuka.compose.ScrollbarSettings
@@ -84,7 +85,7 @@ data class NetworkBrowserScreen(
     }
 
     BackHandler {
-      backstack.removeLastOrNull()
+      backstack.popSafely()
     }
 
     Scaffold(
@@ -94,7 +95,7 @@ data class NetworkBrowserScreen(
           isInSelectionMode = false,
           selectedCount = 0,
           totalCount = 0,
-          onBackClick = { backstack.removeLastOrNull() },
+          onBackClick = { backstack.popSafely() },
           onCancelSelection = {},
           onSortClick = null,
           onSearchClick = null,
@@ -306,6 +307,3 @@ private fun NetworkBrowserContent(
   }
 }
 }
-
-
-

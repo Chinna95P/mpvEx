@@ -126,9 +126,9 @@ interface PlaylistDao {
   // Pagination support for large playlists
   @Query(
     """
-    SELECT * FROM PlaylistItemEntity 
-    WHERE playlistId = :playlistId 
-    ORDER BY position ASC 
+    SELECT * FROM PlaylistItemEntity
+    WHERE playlistId = :playlistId
+    ORDER BY position ASC
     LIMIT :limit OFFSET :offset
     """,
   )
@@ -136,10 +136,68 @@ interface PlaylistDao {
 
   @Query(
     """
-    SELECT * FROM PlaylistItemEntity 
+    SELECT * FROM PlaylistItemEntity
     WHERE playlistId = :playlistId AND position >= :startPosition AND position < :endPosition
     ORDER BY position ASC
     """,
   )
   suspend fun getPlaylistItemsInRange(playlistId: Int, startPosition: Int, endPosition: Int): List<PlaylistItemEntity>
+
+  // M3U category / group support
+  @Query(
+    """
+    SELECT DISTINCT groupTitle FROM PlaylistItemEntity
+    WHERE playlistId = :playlistId AND groupTitle IS NOT NULL AND groupTitle != ''
+    ORDER BY groupTitle ASC
+    """,
+  )
+  fun observeDistinctCategories(playlistId: Int): kotlinx.coroutines.flow.Flow<List<String>>
+
+  @Query(
+    """
+    SELECT DISTINCT groupTitle FROM PlaylistItemEntity
+    WHERE playlistId = :playlistId AND groupTitle IS NOT NULL AND groupTitle != ''
+    ORDER BY groupTitle ASC
+    """,
+  )
+  suspend fun getDistinctCategories(playlistId: Int): List<String>
+
+  @Query(
+    """
+    SELECT * FROM PlaylistItemEntity
+    WHERE playlistId = :playlistId AND groupTitle = :category
+    ORDER BY position ASC
+    """,
+  )
+  fun observeItemsByCategory(playlistId: Int, category: String): kotlinx.coroutines.flow.Flow<List<PlaylistItemEntity>>
+
+  // Favorites
+  @Query(
+    """
+    SELECT * FROM PlaylistItemEntity
+    WHERE playlistId = :playlistId AND isFavorite = 1
+    ORDER BY position ASC
+    """,
+  )
+  fun observeFavoriteItems(playlistId: Int): kotlinx.coroutines.flow.Flow<List<PlaylistItemEntity>>
+
+  @Query(
+    """
+    UPDATE PlaylistItemEntity SET isFavorite = CASE WHEN isFavorite = 0 THEN 1 ELSE 0 END
+    WHERE id = :itemId
+    """,
+  )
+  suspend fun toggleFavorite(itemId: Int)
+
+  @Query("UPDATE PlaylistItemEntity SET isFavorite = :isFavorite WHERE id = :itemId")
+  suspend fun setFavorite(itemId: Int, isFavorite: Boolean)
+
+  // Get favorite filePaths for a playlist (used to preserve favorites on refresh)
+  @Query(
+    """
+    SELECT filePath FROM PlaylistItemEntity
+    WHERE playlistId = :playlistId AND isFavorite = 1
+    """,
+  )
+  suspend fun getFavoriteFilePaths(playlistId: Int): List<String>
 }

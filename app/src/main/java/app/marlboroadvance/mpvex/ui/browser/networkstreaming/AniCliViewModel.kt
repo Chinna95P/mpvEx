@@ -25,6 +25,11 @@ class AniCliViewModel(application: Application) : AndroidViewModel(application),
     val state: StateFlow<AniCliUiState> = _state.asStateFlow()
 
     fun updateQuery(query: String) {
+        if (query.isBlank()) {
+            clearSearch()
+            return
+        }
+
         _state.update { it.copy(searchQuery = query, errorMessage = null) }
     }
 
@@ -127,6 +132,25 @@ class AniCliViewModel(application: Application) : AndroidViewModel(application),
 
     fun dismissStreamSheet() {
         _state.update { it.copy(showStreamSheet = false, selectedEpisode = null, streamLinks = emptyList()) }
+    }
+
+    fun clearSearch() {
+        _state.update {
+            it.copy(
+                searchQuery = "",
+                isSearching = false,
+                searchResults = emptyList(),
+                hasSearched = false,
+                selectedAnime = null,
+                isLoadingEpisodes = false,
+                episodes = emptyList(),
+                selectedEpisode = null,
+                isLoadingStreams = false,
+                streamLinks = emptyList(),
+                showStreamSheet = false,
+                errorMessage = null,
+            )
+        }
     }
 
     fun clearError() {

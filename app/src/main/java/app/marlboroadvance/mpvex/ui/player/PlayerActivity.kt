@@ -36,6 +36,8 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.lifecycleScope
+import app.marlboroadvance.mpvex.database.entities.PlaylistEntity
+import app.marlboroadvance.mpvex.database.entities.PlaylistItemEntity
 import app.marlboroadvance.mpvex.database.entities.PlaybackStateEntity
 import app.marlboroadvance.mpvex.databinding.PlayerLayoutBinding
 import app.marlboroadvance.mpvex.domain.playbackstate.repository.PlaybackStateRepository
@@ -181,6 +183,16 @@ class PlayerActivity :
    * Playlist of URIs for sequential playback
    */
   internal var playlist: List<Uri> = emptyList()
+
+  /**
+   * Database metadata for playlist items, if the current playlist was loaded from Room.
+   */
+  private var playlistItems: List<PlaylistItemEntity> = emptyList()
+
+  /**
+   * Playlist metadata for the current Room-backed playlist.
+   */
+  private var playlistEntity: PlaylistEntity? = null
 
   /**
    * Current index in the playlist
@@ -381,15 +393,15 @@ class PlayerActivity :
       lifecycleScope.launch(Dispatchers.IO) {
         val pid = playlistId ?: return@launch
         try {
-          // Check if this is an M3U playlist
-          val playlistEntity = playlistRepository.getPlaylistById(pid)
-          isM3uPlaylist = playlistEntity?.isM3uPlaylist ?: false
-
-          // Load all items - LazyColumn will handle virtualization/pagination efficiently
-          val items = playlistRepository.getPlaylistItemsAsUris(pid)
-          val totalCount = items.size
+          val loadedPlaylist = playlistRepository.getPlaylistById(pid)
+          val loadedItems = playlistRepository.getPlaylistItems(pid)
+          val items = loadedItems.map { Uri.parse(it.filePath) }
+          val totalCount = loadedItems.size
 
           withContext(Dispatchers.Main) {
+            playlistEntity = loadedPlaylist
+            playlistItems = loadedItems
+            isM3uPlaylist = loadedPlaylist?.isM3uPlaylist == true
             playlist = items
             playlistWindowOffset = 0
             playlistTotalCount = totalCount
@@ -398,6 +410,7 @@ class PlayerActivity :
             if (viewModel.shuffleEnabled.value) {
               onShuffleToggled(true)
             }
+            viewModel.refreshPlaylistItems()
           }
         } catch (e: Exception) {
           Log.e(TAG, "Failed to load playlist from database", e)
@@ -423,7 +436,11 @@ class PlayerActivity :
     // Set HTTP headers (including referer) BEFORE playing the file
     setHttpHeadersFromExtras(intent.extras)
 
-    getPlayableUri(intent)?.let(player::playFile)
+    getPlayableUri(intent)?.let { playableUri ->
+      isReady = false
+      viewModel.onVideoLoadStarted()
+      player.playFile(playableUri)
+    }
 
     // Only set orientation immediately if NOT in Video mode
     // For Video mode, wait for video-params/aspect to become available
@@ -1377,6 +1394,7 @@ class PlayerActivity :
   private fun setHttpHeadersFromExtras(extras: Bundle?) {
     // Build header map starting with auto-detected referer
     val headerMap = mutableMapOf<String, String>()
+    var userAgent: String? = null
 
     // Automatically extract and set referer domain from the URL
     val uri = extractUriFromIntent(intent)
@@ -1389,33 +1407,20 @@ class PlayerActivity :
 
     // Process headers from extras (these can override the auto-detected referer)
     extras?.getStringArray("headers")?.let { headers ->
-      if (headers.isEmpty()) return@let
-
-      if (headers[0].startsWith("User-Agent", ignoreCase = true)) {
-        MPVLib.setPropertyString("user-agent", headers[1])
-      }
-
-      if (headers.size > 2) {
-        headers
-          .asSequence()
-          .drop(2)
-          .chunked(2)
-          .filter { it.size == 2 }
-          .forEach { (key, value) ->
+      headers
+        .asList()
+        .chunked(2)
+        .filter { it.size == 2 }
+        .forEach { (key, value) ->
+          if (key.equals("User-Agent", ignoreCase = true)) {
+            userAgent = value
+          } else {
             headerMap[key] = value
           }
-      }
+        }
     }
 
-    // Set all headers in MPV
-    if (headerMap.isNotEmpty()) {
-      val headersString = headerMap
-        .map { "${it.key}: ${it.value.replace(",", "\\,")}" }
-        .joinToString(",")
-
-      MPVLib.setPropertyString("http-header-fields", headersString)
-      Log.d(TAG, "Set HTTP headers: $headersString")
-    }
+    applyHttpHeaders(userAgent, headerMap)
   }
 
   /**
@@ -1425,9 +1430,13 @@ class PlayerActivity :
    * @param uri The URI to extract referer from and set headers for
    */
   private fun setHttpHeadersForUri(uri: Uri) {
-    if (!HttpUtils.isNetworkStream(uri)) return
+    if (!HttpUtils.isNetworkStream(uri)) {
+      applyHttpHeaders(userAgent = null, headers = emptyMap())
+      return
+    }
 
     val headerMap = mutableMapOf<String, String>()
+    val playlistItem = getPlaylistItemByUri(uri)
 
     // Automatically extract and set referer domain from the URI
     HttpUtils.extractRefererDomain(uri)?.let { referer ->
@@ -1435,15 +1444,7 @@ class PlayerActivity :
       Log.d(TAG, "Auto-detected Referer for playlist item: $referer")
     }
 
-    // Set all headers in MPV
-    if (headerMap.isNotEmpty()) {
-      val headersString = headerMap
-        .map { "${it.key}: ${it.value.replace(",", "\\,")}" }
-        .joinToString(",")
-
-      MPVLib.setPropertyString("http-header-fields", headersString)
-      Log.d(TAG, "Set HTTP headers for playlist item: $headersString")
-    }
+    applyHttpHeaders(getEffectiveUserAgent(playlistItem), headerMap)
   }
 
   /**
@@ -1557,19 +1558,54 @@ class PlayerActivity :
 
   /**
    * Gets the display title for a playlist item URI.
-   * If [playlistTitles] has a title at the matching index, that is returned
-   * so callers (e.g. AniCli) can provide proper episode names.
+   * If Room metadata exists for the current playlist, the stored playlist item title wins.
    *
    * @param uri The URI to get the title for
    * @return The display name/title of the file
    */
   internal fun getPlaylistItemTitle(uri: Uri): String {
+    getPlaylistItemByUri(uri)?.fileName?.takeIf { it.isNotBlank() }?.let { return it }
+
     // Try content resolver first for content:// URIs
     getDisplayNameFromUri(uri)?.let { return it }
 
     // Extract filename from URL/URI
     return extractFileNameFromUri(uri)
   }
+
+  private fun getPlaylistItemByIndex(index: Int): PlaylistItemEntity? = playlistItems.getOrNull(index)
+
+  private fun getPlaylistItemByUri(uri: Uri): PlaylistItemEntity? {
+    val currentItem = getPlaylistItemByIndex(playlistIndex)
+    if (currentItem?.filePath == uri.toString()) {
+      return currentItem
+    }
+    return playlistItems.firstOrNull { it.filePath == uri.toString() }
+  }
+
+  private fun getEffectiveUserAgent(item: PlaylistItemEntity?): String? =
+    item?.userAgent?.takeIf { it.isNotBlank() }
+      ?: playlistEntity?.userAgent?.takeIf { it.isNotBlank() }
+
+  private fun applyHttpHeaders(userAgent: String?, headers: Map<String, String>) {
+    MPVLib.setPropertyString("user-agent", userAgent.orEmpty())
+
+    val headersString =
+      headers.entries.joinToString(",") { (key, value) ->
+        "${key}: ${value.replace(",", "\\,")}"
+      }
+    MPVLib.setPropertyString("http-header-fields", headersString)
+
+    if (userAgent != null || headers.isNotEmpty()) {
+      Log.d(TAG, "Applied HTTP headers (ua=${userAgent != null}, count=${headers.size})")
+    }
+  }
+
+  private fun getPreferredCurrentTitle(): String =
+    getPlaylistItemByIndex(playlistIndex)?.fileName?.takeIf { it.isNotBlank() } ?: fileName
+
+  private fun shouldForceCurrentMediaTitle(): Boolean =
+    getPlaylistItemByIndex(playlistIndex)?.fileName?.isNotBlank() == true || !isCurrentStreamM3U()
 
   /**
    * Plays a playlist item by index.
@@ -1888,8 +1924,9 @@ class PlayerActivity :
   internal fun event(eventId: Int) {
     when (eventId) {
       MPVLib.MpvEvent.MPV_EVENT_FILE_LOADED -> {
-        handleFileLoaded()
         isReady = true
+        viewModel.onVideoLoadCompleted()
+        handleFileLoaded()
       }
 
       MPVLib.MpvEvent.MPV_EVENT_PLAYBACK_RESTART -> {
@@ -1897,6 +1934,7 @@ class PlayerActivity :
         if (!isReady) {
           isReady = true
         }
+        viewModel.onVideoLoadCompleted()
       }
     }
   }
@@ -1987,10 +2025,10 @@ class PlayerActivity :
     applySubtitlePreferences()
     viewModel.restoreSavedVideoAspect(showUpdate = false)
 
-    // Don't force media-title for m3u/m3u8 streams - let MPV provide it
-    if (!isCurrentStreamM3U()) {
-      MPVLib.setPropertyString("force-media-title", fileName)
-      viewModel.setMediaTitle(fileName)
+    if (shouldForceCurrentMediaTitle()) {
+      val preferredTitle = getPreferredCurrentTitle()
+      MPVLib.setPropertyString("force-media-title", preferredTitle)
+      viewModel.setMediaTitle(preferredTitle)
     }
 
     viewModel.unpause()
@@ -2553,6 +2591,9 @@ class PlayerActivity :
       playlistWindowOffset = 0
       playlistTotalCount = -1
       playlist = playlistFromIntent
+      playlistItems = emptyList()
+      playlistEntity = null
+      isM3uPlaylist = false
     }
 
     // If playlist is empty but playlist_id is provided, load from database
@@ -2560,12 +2601,18 @@ class PlayerActivity :
       lifecycleScope.launch(Dispatchers.IO) {
         val pid = playlistId ?: return@launch
         try {
-          val totalCount = playlistRepository.getPlaylistItemCount(pid)
-          val items = playlistRepository.getPlaylistItemsAsUris(pid)
+          val loadedPlaylist = playlistRepository.getPlaylistById(pid)
+          val loadedItems = playlistRepository.getPlaylistItems(pid)
+          val items = loadedItems.map { Uri.parse(it.filePath) }
+          val totalCount = loadedItems.size
           withContext(Dispatchers.Main) {
+            playlistEntity = loadedPlaylist
+            playlistItems = loadedItems
+            isM3uPlaylist = loadedPlaylist?.isM3uPlaylist == true
             playlist = items
             playlistTotalCount = totalCount
             Log.d(TAG, "onNewIntent: Loaded ${items.size} items from playlist $pid")
+            viewModel.refreshPlaylistItems()
           }
         } catch (e: Exception) {
           Log.e(TAG, "onNewIntent: Failed to load playlist from database", e)
@@ -2593,6 +2640,8 @@ class PlayerActivity :
 
     // Load the new file
     getPlayableUri(intent)?.let { uri ->
+      isReady = false
+      viewModel.onVideoLoadStarted()
       // Avoid blocking UI thread while mpv opens network streams (e.g., HLS).
       lifecycleScope.launch(Dispatchers.Default) {
         MPVLib.command("loadfile", uri)
@@ -3261,7 +3310,7 @@ class PlayerActivity :
     playlistIndex = index
 
     // Extract and set the new file name
-    fileName = getFileNameFromUri(uri)
+    fileName = getPlaylistItemByIndex(index)?.fileName?.takeIf { it.isNotBlank() } ?: getFileNameFromUri(uri)
     // Generate new media identifier for playback state
     mediaIdentifier = getMediaIdentifierFromUri(uri, fileName)
 
@@ -3302,14 +3351,18 @@ class PlayerActivity :
 
     // Load the new video
     // Avoid blocking UI thread while mpv opens network streams (e.g., HLS).
+    isReady = false
+    viewModel.onVideoLoadStarted()
+
     lifecycleScope.launch(Dispatchers.Default) {
       MPVLib.command("loadfile", playableUri)
     }
 
     // Update media title (this will trigger UI update)
-    // Don't force media-title for m3u/m3u8 streams - let MPV provide it
-    val isM3U = uri.toString().lowercase().contains(".m3u8") || uri.toString().lowercase().contains(".m3u")
-    if (!isM3U) {
+    val shouldForceTitle =
+      getPlaylistItemByIndex(index)?.fileName?.isNotBlank() == true ||
+        !(uri.toString().lowercase().contains(".m3u8") || uri.toString().lowercase().contains(".m3u"))
+    if (shouldForceTitle) {
       MPVLib.setPropertyString("force-media-title", fileName)
       viewModel.setMediaTitle(fileName)
     }
@@ -3553,6 +3606,9 @@ class PlayerActivity :
 
         if (newIndex != -1) {
           withContext(Dispatchers.Main) {
+            playlistEntity = null
+            playlistItems = emptyList()
+            isM3uPlaylist = false
             playlist = newPlaylist
             playlistIndex = newIndex
             Log.d(TAG, "Auto-playlist generated: ${playlist.size} videos")

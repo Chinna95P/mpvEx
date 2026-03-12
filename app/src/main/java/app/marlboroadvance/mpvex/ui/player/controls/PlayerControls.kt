@@ -263,6 +263,7 @@ fun PlayerControls(
   }
 
   val videoOpenAnim by playerPreferences.videoOpenAnimation.collectAsState()
+  val videoOpenAnimState by viewModel.videoOpenAnimationState.collectAsState()
   val animSpeed by playerPreferences.animationSpeed.collectAsState()
 
   val transparentOverlay by animateFloatAsState(
@@ -1290,7 +1291,11 @@ fun PlayerControls(
     }
 
     // ── Video open animation overlay ────────────────────────────────────────
-    VideoOpenAnimationOverlay(videoOpenAnim, animSpeed)
+    VideoOpenAnimationOverlay(
+      style = videoOpenAnim,
+      speedMultiplier = animSpeed,
+      animationState = videoOpenAnimState,
+    )
 
     val sheetShown by viewModel.sheetShown.collectAsState()
     val subtitles by viewModel.subtitleTracks.collectAsState(persistentListOf())

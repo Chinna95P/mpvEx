@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import app.marlboroadvance.mpvex.R
 import app.marlboroadvance.mpvex.presentation.Screen
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
+import app.marlboroadvance.mpvex.ui.utils.popSafely
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -93,7 +94,7 @@ object SettingsSearchScreen : Screen {
                         )
                     },
                     navigationIcon = {
-                        IconButton(onClick = backstack::removeLastOrNull) {
+                        IconButton(onClick = { backstack.popSafely() }) {
                             Icon(
                                 Icons.Outlined.ArrowBack,
                                 contentDescription = null,
@@ -294,6 +295,3 @@ private fun SearchResultItem(
         }
     }
 }
-
-
-

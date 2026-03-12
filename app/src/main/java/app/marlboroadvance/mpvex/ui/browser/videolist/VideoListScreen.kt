@@ -95,6 +95,7 @@ import app.marlboroadvance.mpvex.ui.browser.selection.SelectionManager
 import app.marlboroadvance.mpvex.ui.browser.selection.rememberSelectionManager
 import app.marlboroadvance.mpvex.ui.browser.states.EmptyState
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
+import app.marlboroadvance.mpvex.ui.utils.popSafely
 import app.marlboroadvance.mpvex.utils.history.RecentlyPlayedOps
 import app.marlboroadvance.mpvex.utils.media.CopyPasteOps
 import app.marlboroadvance.mpvex.utils.media.MediaUtils
@@ -257,7 +258,7 @@ data class VideoListScreen(
             if (selectionManager.isInSelectionMode) {
               selectionManager.clear()
             } else {
-              backstack.removeLastOrNull()
+              backstack.popSafely()
             }
           },
           onCancelSelection = { selectionManager.clear() },
@@ -1039,6 +1040,3 @@ private fun VideoSortDialog(
     videoGridColumnSelector = videoGridColumnSelector,
   )
 }
-
-
-

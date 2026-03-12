@@ -46,6 +46,7 @@ import app.marlboroadvance.mpvex.preferences.AdvancedPreferences
 import app.marlboroadvance.mpvex.preferences.preference.collectAsState
 import app.marlboroadvance.mpvex.presentation.Screen
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
+import app.marlboroadvance.mpvex.ui.utils.popSafely
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -140,7 +141,7 @@ data class ConfigEditorScreen(
           withContext(Dispatchers.Main) {
             hasUnsavedChanges = false
             Toast.makeText(context, "$fileName saved", Toast.LENGTH_SHORT).show()
-            backStack.removeLastOrNull()
+            backStack.popSafely()
           }
         } catch (e: Exception) {
           withContext(Dispatchers.Main) {
@@ -173,7 +174,7 @@ data class ConfigEditorScreen(
           }
         },
         navigationIcon = {
-          IconButton(onClick = backStack::removeLastOrNull) {
+          IconButton(onClick = { backStack.popSafely() }) {
             Icon(
               Icons.Default.ArrowBack,
               contentDescription = "Back",
@@ -230,6 +231,3 @@ data class ConfigEditorScreen(
     }
   }
 }
-
-
-

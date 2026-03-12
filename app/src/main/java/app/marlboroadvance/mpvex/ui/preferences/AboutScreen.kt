@@ -59,6 +59,7 @@ import app.marlboroadvance.mpvex.R
 import app.marlboroadvance.mpvex.presentation.Screen
 import app.marlboroadvance.mpvex.presentation.crash.CrashActivity.Companion.collectDeviceInfo
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
+import app.marlboroadvance.mpvex.ui.utils.popSafely
 import app.marlboroadvance.mpvex.utils.update.UpdateViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.Serializable
@@ -105,7 +106,7 @@ object AboutScreen : Screen {
             ) 
           },
           navigationIcon = {
-            IconButton(onClick = backstack::removeLastOrNull) {
+            IconButton(onClick = { backstack.popSafely() }) {
               Icon(
                 imageVector = Icons.Default.ArrowBack, 
                 contentDescription = null,
@@ -493,7 +494,7 @@ object LibrariesScreen : Screen {
             ) 
           },
           navigationIcon = {
-            IconButton(onClick = backstack::removeLastOrNull) {
+            IconButton(onClick = { backstack.popSafely() }) {
               Icon(
                 imageVector = Icons.Default.ArrowBack, 
                 contentDescription = null,
@@ -507,6 +508,3 @@ object LibrariesScreen : Screen {
     }
   }
 }
-
-
-

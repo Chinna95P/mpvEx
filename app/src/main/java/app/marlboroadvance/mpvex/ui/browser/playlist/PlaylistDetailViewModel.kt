@@ -40,6 +40,9 @@ class PlaylistDetailViewModel(
   private val _videoItems = MutableStateFlow<List<PlaylistVideoItem>>(emptyList())
   val videoItems: StateFlow<List<PlaylistVideoItem>> = _videoItems.asStateFlow()
 
+  private val _categories = MutableStateFlow<List<String>>(emptyList())
+  val categories: StateFlow<List<String>> = _categories.asStateFlow()
+
   // Start as loading to avoid briefly showing "No videos in playlist" before the first DB emission arrives,
   // especially noticeable for very large playlists.
   private val _isLoading = MutableStateFlow(true)
@@ -66,6 +69,12 @@ class PlaylistDetailViewModel(
       }
     }
 
+    viewModelScope.launch(Dispatchers.IO) {
+      playlistRepository.observeDistinctCategories(playlistId).collectLatest { categories ->
+        _categories.value = categories
+      }
+    }
+
     // Observe playlist items and load video metadata
     viewModelScope.launch(Dispatchers.IO) {
       playlistRepository.observePlaylistItems(playlistId).collectLatest { items ->
@@ -79,36 +88,7 @@ class PlaylistDetailViewModel(
             val isM3uPlaylist = playlist?.isM3uPlaylist == true
 
             if (isM3uPlaylist) {
-              // For M3U playlists, create Video objects directly from URLs
-              val videoItems = items.mapNotNull { item ->
-                try {
-                  // Create a Video object for streaming URLs
-                  val video = Video(
-                    id = item.id.toLong(),
-                    title = item.fileName,
-                    displayName = item.fileName,
-                    path = item.filePath,
-                    uri = android.net.Uri.parse(item.filePath),
-                    duration = 0L, // Duration unknown for streams
-                    durationFormatted = "00:00",
-                    size = 0L, // Size unknown for streams
-                    sizeFormatted = "0 B",
-                    dateModified = item.addedAt,
-                    dateAdded = item.addedAt,
-                    mimeType = "video/*",
-                    bucketId = "m3u_playlist_$playlistId",
-                    bucketDisplayName = playlist?.name ?: "M3U Playlist",
-                    width = 0,
-                    height = 0,
-                    fps = 0f,
-                    resolution = "Unknown"
-                  )
-                  PlaylistVideoItem(item, video)
-                } catch (e: Exception) {
-                  Log.w(TAG, "Failed to create video item for URL: ${item.filePath}", e)
-                  null
-                }
-              }
+              val videoItems = buildM3UVideoItems(playlist, items)
 
               Log.d(TAG, "Loaded ${videoItems.size} M3U playlist items")
               _videoItems.value = videoItems
@@ -164,36 +144,7 @@ class PlaylistDetailViewModel(
 
       if (items.isNotEmpty()) {
         if (isM3uPlaylist) {
-          // For M3U playlists, create Video objects directly from URLs
-          val videoItems = items.mapNotNull { item ->
-            try {
-              val video = Video(
-                id = item.id.toLong(),
-                title = item.fileName,
-                displayName = item.fileName,
-                path = item.filePath,
-                uri = android.net.Uri.parse(item.filePath),
-                duration = 0L,
-                durationFormatted = "00:00",
-                size = 0L,
-                sizeFormatted = "0 B",
-                dateModified = item.addedAt,
-                dateAdded = item.addedAt,
-                mimeType = "video/*",
-                bucketId = "m3u_playlist_$playlistId",
-                bucketDisplayName = playlist?.name ?: "M3U Playlist",
-                width = 0,
-                height = 0,
-                fps = 0f,
-                resolution = "Unknown"
-              )
-              PlaylistVideoItem(item, video)
-            } catch (e: Exception) {
-              Log.w(TAG, "Failed to create video item for URL: ${item.filePath}", e)
-              null
-            }
-          }
-          _videoItems.value = videoItems
+          _videoItems.value = buildM3UVideoItems(playlist, items)
         } else {
           // For regular playlists, use existing logic
           val bucketIds = items.map { item ->
@@ -207,6 +158,8 @@ class PlaylistDetailViewModel(
           }
           _videoItems.value = videoItems
         }
+      } else {
+        _videoItems.value = emptyList()
       }
     } catch (e: Exception) {
       Log.e(TAG, "Error refreshing playlist videos", e)
@@ -264,4 +217,41 @@ class PlaylistDetailViewModel(
       _isLoading.value = false
     }
   }
+
+  suspend fun toggleFavorite(itemId: Int) {
+    playlistRepository.toggleFavorite(itemId)
+  }
+
+  private fun buildM3UVideoItems(
+    playlist: PlaylistEntity?,
+    items: List<PlaylistItemEntity>,
+  ): List<PlaylistVideoItem> =
+    items.mapNotNull { item ->
+      try {
+        val video = Video(
+          id = item.id.toLong(),
+          title = item.fileName,
+          displayName = item.fileName,
+          path = item.filePath,
+          uri = android.net.Uri.parse(item.filePath),
+          duration = 0L,
+          durationFormatted = "--",
+          size = 0L,
+          sizeFormatted = "--",
+          dateModified = item.addedAt,
+          dateAdded = item.addedAt,
+          mimeType = "video/*",
+          bucketId = "m3u_playlist_$playlistId",
+          bucketDisplayName = playlist?.name ?: "M3U Playlist",
+          width = 0,
+          height = 0,
+          fps = 0f,
+          resolution = "--",
+        )
+        PlaylistVideoItem(item, video)
+      } catch (e: Exception) {
+        Log.w(TAG, "Failed to create video item for URL: ${item.filePath}", e)
+        null
+      }
+    }
 }

@@ -94,6 +94,7 @@ import app.marlboroadvance.mpvex.ui.browser.sheets.PlayLinkSheet
 import app.marlboroadvance.mpvex.ui.browser.states.EmptyState
 import app.marlboroadvance.mpvex.ui.browser.states.PermissionDeniedState
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
+import app.marlboroadvance.mpvex.ui.utils.popSafely
 import app.marlboroadvance.mpvex.utils.media.CopyPasteOps
 import app.marlboroadvance.mpvex.utils.media.MediaUtils
 import app.marlboroadvance.mpvex.utils.permission.PermissionUtils
@@ -512,7 +513,7 @@ fun FileSystemBrowserScreen(path: String? = null) {
             onBackClick = if (isAtRoot) {
               null
             } else {
-              { backstack.removeLastOrNull() }
+              { backstack.popSafely() }
             },
             onCancelSelection = {
               folderSelectionManager.clear()
@@ -1723,6 +1724,3 @@ fun FileSystemSortDialog(
     )
   )
 }
-
-
-

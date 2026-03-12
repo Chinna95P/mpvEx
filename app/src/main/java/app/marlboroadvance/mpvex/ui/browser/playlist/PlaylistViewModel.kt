@@ -135,8 +135,8 @@ class PlaylistViewModel(
     return repository.createPlaylist(name)
   }
 
-  suspend fun createM3UPlaylist(url: String): Result<Long> {
-    return repository.createM3UPlaylist(url)
+  suspend fun createM3UPlaylist(url: String, userAgent: String? = null): Result<Long> {
+    return repository.createM3UPlaylist(url, userAgent)
   }
 
   suspend fun createM3UPlaylistFromFile(uri: android.net.Uri): Result<Long> {

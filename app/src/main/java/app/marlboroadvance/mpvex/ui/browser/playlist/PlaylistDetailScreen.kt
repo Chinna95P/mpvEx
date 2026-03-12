@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.ExperimentalMaterialApi
@@ -27,6 +29,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -51,7 +54,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import app.marlboroadvance.mpvex.database.repository.PlaylistRepository
+import app.marlboroadvance.mpvex.database.entities.PlaylistEntity
+import app.marlboroadvance.mpvex.database.entities.PlaylistItemEntity
 import app.marlboroadvance.mpvex.domain.media.model.Video
 import app.marlboroadvance.mpvex.preferences.AppearancePreferences
 import app.marlboroadvance.mpvex.preferences.GesturePreferences
@@ -65,6 +69,7 @@ import app.marlboroadvance.mpvex.ui.browser.components.BrowserTopBar
 import app.marlboroadvance.mpvex.ui.browser.selection.rememberSelectionManager
 import app.marlboroadvance.mpvex.ui.player.PlayerActivity
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
+import app.marlboroadvance.mpvex.ui.utils.popSafely
 import app.marlboroadvance.mpvex.utils.media.MediaInfoOps
 import app.marlboroadvance.mpvex.utils.media.MediaUtils
 import kotlinx.coroutines.launch
@@ -79,11 +84,11 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
  * Playlist detail screen showing videos in a playlist.
  *
  * **M3U Playlist Behavior:**
- * M3U playlists (streaming URLs) are handled differently to prevent ANR issues:
- * - Each stream is played individually (no playlist navigation in PlayerActivity)
- * - No next/previous buttons - each stream URL is opened standalone
- * - This prevents loading thousands of URLs into memory at once
- * - Users can manually select and play different streams from the list
+ * M3U playlists are treated as channel lists:
+ * - Stored stream metadata is surfaced in the UI
+ * - Playlist playback keeps channel titles instead of raw URLs
+ * - Per-stream headers can be passed to the player for supported sources
+ * - Categories and saved streams make large IPTV lists easier to browse
  *
  * **Regular Playlist Behavior:**
  * Local file playlists support full playlist navigation:
@@ -97,7 +102,6 @@ data class PlaylistDetailScreen(val playlistId: Int) : Screen {
   @Composable
   override fun Content() {
     val context = LocalContext.current
-    val repository = koinInject<PlaylistRepository>()
     val backStack = LocalBackStack.current
     val coroutineScope = rememberCoroutineScope()
 
@@ -113,6 +117,7 @@ data class PlaylistDetailScreen(val playlistId: Int) : Screen {
 
     val playlist by viewModel.playlist.collectAsState()
     val videoItems by viewModel.videoItems.collectAsState()
+    val categories by viewModel.categories.collectAsState()
     val videos = videoItems.map { it.video }
     val isLoading by viewModel.isLoading.collectAsState()
     val isRefreshing = remember { mutableStateOf(false) }
@@ -120,19 +125,47 @@ data class PlaylistDetailScreen(val playlistId: Int) : Screen {
     // Search state
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var isSearching by rememberSaveable { mutableStateOf(false) }
+    var selectedM3UFilter by rememberSaveable { mutableStateOf(M3U_FILTER_ALL) }
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
+    val hasFavoriteStreams = remember(videoItems) { videoItems.any { it.playlistItem.isFavorite } }
 
-    // Filter video items based on search query
+    LaunchedEffect(categories, hasFavoriteStreams, playlist?.isM3uPlaylist) {
+      if (playlist?.isM3uPlaylist != true) {
+        selectedM3UFilter = M3U_FILTER_ALL
+      } else if (
+        selectedM3UFilter != M3U_FILTER_ALL &&
+        selectedM3UFilter != M3U_FILTER_FAVORITES &&
+        selectedM3UFilter !in categories
+      ) {
+        selectedM3UFilter = M3U_FILTER_ALL
+      } else if (selectedM3UFilter == M3U_FILTER_FAVORITES && !hasFavoriteStreams) {
+        selectedM3UFilter = M3U_FILTER_ALL
+      }
+    }
+
+    val m3uFilteredItems =
+      if (playlist?.isM3uPlaylist == true) {
+        when (selectedM3UFilter) {
+          M3U_FILTER_FAVORITES -> videoItems.filter { it.playlistItem.isFavorite }
+          M3U_FILTER_ALL -> videoItems
+          else -> videoItems.filter { it.playlistItem.groupTitle == selectedM3UFilter }
+        }
+      } else {
+        videoItems
+      }
+
+    // Filter video items based on category and search query
     val filteredVideoItems = if (isSearching && searchQuery.isNotBlank()) {
-      videoItems.filter { item ->
+      m3uFilteredItems.filter { item ->
         item.video.displayName.contains(searchQuery, ignoreCase = true) ||
-          item.video.path.contains(searchQuery, ignoreCase = true)
+          item.video.path.contains(searchQuery, ignoreCase = true) ||
+          item.playlistItem.groupTitle.orEmpty().contains(searchQuery, ignoreCase = true) ||
+          item.playlistItem.tvgId.orEmpty().contains(searchQuery, ignoreCase = true)
       }
     } else {
-      videoItems
+      m3uFilteredItems
     }
-    val filteredVideos = filteredVideoItems.map { it.video }
 
     // Request focus when search is activated
     LaunchedEffect(isSearching) {
@@ -179,6 +212,21 @@ data class PlaylistDetailScreen(val playlistId: Int) : Screen {
         }
         selectionManager.isInSelectionMode -> selectionManager.clear()
       }
+    }
+
+    fun launchPlaylistPlayback(item: PlaylistVideoItem, startIndex: Int) {
+      val intent =
+        Intent(context, PlayerActivity::class.java).apply {
+          action = Intent.ACTION_VIEW
+          data = item.video.uri
+          putExtra("internal_launch", true)
+          putExtra("playlist_index", startIndex)
+          putExtra("playlist_id", playlistId)
+          putExtra("launch_source", if (playlist?.isM3uPlaylist == true) "m3u_playlist" else "playlist")
+          putExtra("title", item.playlistItem.fileName)
+          buildM3UHeadersExtra(playlist, item.playlistItem)?.let { putExtra("headers", it) }
+        }
+      context.startActivity(intent)
     }
 
     Scaffold(
@@ -236,7 +284,7 @@ data class PlaylistDetailScreen(val playlistId: Int) : Screen {
               when {
                 isReorderMode -> isReorderMode = false
                 selectionManager.isInSelectionMode -> selectionManager.clear()
-                else -> backStack.removeLastOrNull()
+                else -> backStack.popSafely()
               }
             },
             onCancelSelection = { selectionManager.clear() },
@@ -327,52 +375,21 @@ data class PlaylistDetailScreen(val playlistId: Int) : Screen {
                     // Play button
                     Button(
                       onClick = {
-                        if (playlist?.isM3uPlaylist == true) {
-                          // M3U playlists: Play only the first/most recent stream (no playlist navigation)
-                          val mostRecentlyPlayedItem = videoItems
-                            .filter { it.playlistItem.lastPlayedAt > 0 }
-                            .maxByOrNull { it.playlistItem.lastPlayedAt }
+                        val mostRecentlyPlayedItem = videoItems
+                          .filter { it.playlistItem.lastPlayedAt > 0 }
+                          .maxByOrNull { it.playlistItem.lastPlayedAt }
 
-                          val itemToPlay = mostRecentlyPlayedItem ?: videoItems.firstOrNull()
+                        val itemToPlay = mostRecentlyPlayedItem ?: videoItems.firstOrNull()
+                        val startIndex =
+                          itemToPlay?.let { candidate ->
+                            videoItems.indexOfFirst { it.playlistItem.id == candidate.playlistItem.id }
+                          } ?: -1
 
-                          if (itemToPlay != null) {
-                            coroutineScope.launch {
-                              viewModel.updatePlayHistory(itemToPlay.video.path)
-                            }
-
-                            // Play single stream URL without playlist
-                            MediaUtils.playFile(itemToPlay.video, context, "m3u_playlist")
+                        if (itemToPlay != null && startIndex >= 0) {
+                          coroutineScope.launch {
+                            viewModel.updatePlayHistory(itemToPlay.video.path)
                           }
-                        } else {
-                          // Regular playlists: Play with full playlist navigation
-                          val mostRecentlyPlayedItem = videoItems
-                            .filter { it.playlistItem.lastPlayedAt > 0 }
-                            .maxByOrNull { it.playlistItem.lastPlayedAt }
-
-                          val startIndex = if (mostRecentlyPlayedItem != null) {
-                            videoItems.indexOfFirst { it.playlistItem.id == mostRecentlyPlayedItem.playlistItem.id }
-                          } else {
-                            0
-                          }
-
-                          if (videos.isNotEmpty() && startIndex >= 0) {
-                            coroutineScope.launch {
-                              viewModel.updatePlayHistory(videos[startIndex].path)
-                            }
-                          }
-
-                          val videoUris = videos.map { it.uri }
-                          if (videoUris.isNotEmpty() && startIndex >= 0) {
-                            val intent = Intent(context, PlayerActivity::class.java).apply {
-                              action = Intent.ACTION_VIEW
-                              data = videoUris[startIndex]
-                              putExtra("playlist_index", startIndex)
-                              putExtra("launch_source", "playlist")
-                              putExtra("playlist_id", playlistId)
-                              putExtra("title", videos[startIndex].displayName)
-                            }
-                            context.startActivity(intent)
-                          }
+                          launchPlaylistPlayback(itemToPlay, startIndex)
                         }
                       },
                       colors = ButtonDefaults.buttonColors(
@@ -462,50 +479,60 @@ data class PlaylistDetailScreen(val playlistId: Int) : Screen {
             }
           },
         ) {
-          PlaylistVideoListContent(
-            videoItems = filteredVideoItems,
-            isLoading = isLoading && videoItems.isEmpty(),
-            selectionManager = selectionManager,
-            isM3uPlaylist = playlist?.isM3uPlaylist == true,
-            isReorderMode = isReorderMode,
-            onReorder = { fromIndex, toIndex ->
-              coroutineScope.launch {
-                viewModel.reorderPlaylistItems(fromIndex, toIndex)
-              }
-            },
-            onVideoItemClick = { item ->
-              if (selectionManager.isInSelectionMode) {
-                selectionManager.toggle(item)
-              } else {
-                coroutineScope.launch {
-                  viewModel.updatePlayHistory(item.video.path)
-                }
+          Column(modifier = Modifier.fillMaxSize()) {
+            if (playlist?.isM3uPlaylist == true && (categories.isNotEmpty() || hasFavoriteStreams)) {
+              M3UPlaylistFilterRow(
+                categories = categories,
+                hasFavorites = hasFavoriteStreams,
+                selectedFilter = selectedM3UFilter,
+                onFilterSelected = { selectedM3UFilter = it },
+              )
+            }
 
-                val startIndex = videoItems.indexOfFirst { it.playlistItem.id == item.playlistItem.id }
-                if (startIndex >= 0) {
-                  if (videos.size == 1) {
-                    MediaUtils.playFile(item.video, context, "playlist_detail")
-                  } else {
-                    val intent = Intent(Intent.ACTION_VIEW, videos[startIndex].uri)
-                    intent.setClass(context, PlayerActivity::class.java)
-                    intent.putExtra("internal_launch", true)
-                    intent.putExtra("playlist_index", startIndex)
-                    intent.putExtra("launch_source", "playlist")
-                    intent.putExtra("playlist_id", playlistId)
-                    intent.putExtra("title", videos[startIndex].displayName)
-                    context.startActivity(intent)
+            PlaylistVideoListContent(
+              videoItems = filteredVideoItems,
+              isLoading = isLoading && videoItems.isEmpty(),
+              selectionManager = selectionManager,
+              isM3uPlaylist = playlist?.isM3uPlaylist == true,
+              isReorderMode = isReorderMode,
+              onReorder = { fromIndex, toIndex ->
+                coroutineScope.launch {
+                  viewModel.reorderPlaylistItems(fromIndex, toIndex)
+                }
+              },
+              onToggleFavorite =
+                if (playlist?.isM3uPlaylist == true && !selectionManager.isInSelectionMode) {
+                  { item ->
+                    coroutineScope.launch {
+                      viewModel.toggleFavorite(item.playlistItem.id)
+                    }
                   }
                 } else {
-                  MediaUtils.playFile(item.video, context, "playlist_detail")
+                  null
+                },
+              onVideoItemClick = { item ->
+                if (selectionManager.isInSelectionMode) {
+                  selectionManager.toggle(item)
+                } else {
+                  coroutineScope.launch {
+                    viewModel.updatePlayHistory(item.video.path)
+                  }
+
+                  val startIndex = videoItems.indexOfFirst { it.playlistItem.id == item.playlistItem.id }
+                  if (startIndex >= 0) {
+                    launchPlaylistPlayback(item, startIndex)
+                  } else {
+                    MediaUtils.playFile(item.video, context, "playlist_detail", title = item.playlistItem.fileName)
+                  }
                 }
-              }
-            },
-            onVideoItemLongClick = { item ->
-              selectionManager.toggle(item)
-            },
-            listState = listState,
-            modifier = Modifier.fillMaxSize(),
-          )
+              },
+              onVideoItemLongClick = { item ->
+                selectionManager.toggle(item)
+              },
+              listState = listState,
+              modifier = Modifier.weight(1f).fillMaxWidth(),
+            )
+          }
         }
       }
 
@@ -541,6 +568,7 @@ private fun PlaylistVideoListContent(
   selectionManager: app.marlboroadvance.mpvex.ui.browser.selection.SelectionManager<PlaylistVideoItem, Int>,
   isReorderMode: Boolean,
   onReorder: (Int, Int) -> Unit,
+  onToggleFavorite: ((PlaylistVideoItem) -> Unit)?,
   onVideoItemClick: (PlaylistVideoItem) -> Unit,
   onVideoItemLongClick: (PlaylistVideoItem) -> Unit,
   listState: androidx.compose.foundation.lazy.LazyListState,
@@ -685,10 +713,16 @@ private fun PlaylistVideoListContent(
                   M3UVideoCard(
                     title = item.video.displayName,
                     url = item.video.path,
+                    logoUrl = item.playlistItem.tvgLogo,
+                    groupTitle = item.playlistItem.groupTitle,
+                    hasDrm = !item.playlistItem.licenseType.isNullOrBlank() || !item.playlistItem.licenseKey.isNullOrBlank(),
+                    hasCustomUserAgent = !item.playlistItem.userAgent.isNullOrBlank(),
                     onClick = { onVideoItemClick(item) },
                     onLongClick = { onVideoItemLongClick(item) },
+                    onFavoriteClick = onToggleFavorite?.let { { it(item) } },
                     isSelected = selectionManager.isSelected(item),
                     isRecentlyPlayed = item.playlistItem.id == mostRecentlyPlayedItem?.playlistItem?.id,
+                    isFavorite = item.playlistItem.isFavorite,
                     modifier = Modifier.weight(1f),
                   )
                 } else {
@@ -732,6 +766,60 @@ private fun PlaylistVideoListContent(
       }
     }
   }
+}
+
+@Composable
+private fun M3UPlaylistFilterRow(
+  categories: List<String>,
+  hasFavorites: Boolean,
+  selectedFilter: String,
+  onFilterSelected: (String) -> Unit,
+) {
+  LazyRow(
+    modifier = Modifier.fillMaxWidth(),
+    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    item {
+      FilterChip(
+        selected = selectedFilter == M3U_FILTER_ALL,
+        onClick = { onFilterSelected(M3U_FILTER_ALL) },
+        label = { Text("All") },
+      )
+    }
+
+    if (hasFavorites) {
+      item {
+        FilterChip(
+          selected = selectedFilter == M3U_FILTER_FAVORITES,
+          onClick = { onFilterSelected(M3U_FILTER_FAVORITES) },
+          label = { Text("Saved") },
+        )
+      }
+    }
+
+    items(categories, key = { it }) { category ->
+      FilterChip(
+        selected = selectedFilter == category,
+        onClick = { onFilterSelected(category) },
+        label = {
+          Text(
+            text = category,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+          )
+        },
+      )
+    }
+  }
+}
+
+private fun buildM3UHeadersExtra(
+  playlist: PlaylistEntity?,
+  item: PlaylistItemEntity,
+): Array<String>? {
+  val userAgent = item.userAgent?.takeIf { it.isNotBlank() } ?: playlist?.userAgent?.takeIf { it.isNotBlank() }
+  return userAgent?.let { arrayOf("User-Agent", it) }
 }
 
 @Composable
@@ -859,5 +947,5 @@ private fun getFileNameFromUri(context: android.content.Context, uri: Uri): Stri
   }
 }
 
-
-
+private const val M3U_FILTER_ALL = "__m3u_all__"
+private const val M3U_FILTER_FAVORITES = "__m3u_favorites__"

@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import app.marlboroadvance.mpvex.R
 import app.marlboroadvance.mpvex.presentation.Screen
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
+import app.marlboroadvance.mpvex.ui.utils.popSafely
 import kotlinx.serialization.Serializable
 import me.zhanghai.compose.preference.Preference
 import me.zhanghai.compose.preference.ProvidePreferenceLocals
@@ -51,7 +52,7 @@ object PreferencesScreen : Screen {
             )
           },
           navigationIcon = {
-            IconButton(onClick = backstack::removeLastOrNull) {
+            IconButton(onClick = { backstack.popSafely() }) {
               Icon(
                 Icons.Outlined.ArrowBack, 
                 contentDescription = null,
@@ -349,6 +350,3 @@ object PreferencesScreen : Screen {
     }
   }
 }
-
-
-

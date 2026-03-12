@@ -45,6 +45,7 @@ import app.marlboroadvance.mpvex.ui.icons.Icons
 import app.marlboroadvance.mpvex.ui.player.controls.components.AbLoopIcon
 import app.marlboroadvance.mpvex.ui.preferences.components.PlayerButtonChip
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
+import app.marlboroadvance.mpvex.ui.utils.popSafely
 import kotlinx.serialization.Serializable
 import me.zhanghai.compose.preference.PreferenceCategory
 import me.zhanghai.compose.preference.ProvidePreferenceLocals
@@ -182,7 +183,7 @@ data class ControlLayoutEditorScreen(
         TopAppBar(
           title = { Text(text = title) },
           navigationIcon = {
-            IconButton(onClick = backstack::removeLastOrNull) {
+            IconButton(onClick = { backstack.popSafely() }) {
               AppSymbolIcon(Icons.Outlined.ArrowBack, contentDescription = "Back")
             }
           },
@@ -463,4 +464,3 @@ private fun IconsLegend() {
         }
     }
 }
-

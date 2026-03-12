@@ -52,6 +52,7 @@ import app.marlboroadvance.mpvex.presentation.Screen
 import app.marlboroadvance.mpvex.presentation.components.ConfirmDialog
 import app.marlboroadvance.mpvex.presentation.crash.CrashActivity
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
+import app.marlboroadvance.mpvex.ui.utils.popSafely
 import app.marlboroadvance.mpvex.utils.history.RecentlyPlayedOps
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -187,7 +188,7 @@ object AdvancedPreferencesScreen : Screen {
             )
           },
           navigationIcon = {
-            IconButton(onClick = backStack::removeLastOrNull) {
+            IconButton(onClick = { backStack.popSafely() }) {
               Icon(
                 Icons.Default.ArrowBack, 
                 contentDescription = null,
@@ -740,6 +741,3 @@ object AdvancedPreferencesScreen : Screen {
 
 fun getSimplifiedPathFromUri(uri: String): String =
   Environment.getExternalStorageDirectory().canonicalPath + "/" + Uri.decode(uri).substringAfterLast(":")
-
-
-

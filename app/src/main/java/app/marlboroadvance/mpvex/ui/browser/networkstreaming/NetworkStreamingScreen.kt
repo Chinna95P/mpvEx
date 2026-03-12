@@ -4,7 +4,6 @@ import app.marlboroadvance.mpvex.ui.icons.Icon
 import app.marlboroadvance.mpvex.ui.icons.Icons
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -20,20 +19,19 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -44,8 +42,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.marlboroadvance.mpvex.domain.anicli.AniCliAnime
@@ -55,14 +59,10 @@ import app.marlboroadvance.mpvex.ui.browser.components.BrowserTopBar
 import app.marlboroadvance.mpvex.ui.browser.cards.NetworkConnectionCard
 import app.marlboroadvance.mpvex.ui.browser.dialogs.AddConnectionSheet
 import app.marlboroadvance.mpvex.ui.browser.dialogs.EditConnectionSheet
-import app.marlboroadvance.mpvex.ui.browser.states.EmptyState
-import app.marlboroadvance.mpvex.ui.preferences.PreferencesScreen
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
 import app.marlboroadvance.mpvex.utils.media.MediaUtils
-import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import org.koin.compose.koinInject
-import app.marlboroadvance.mpvex.preferences.FolderViewMode
 
 @Serializable
 object NetworkStreamingScreen : Screen {
@@ -315,7 +315,29 @@ private fun StreamLinkSection(
   onPlayLink: (String) -> Unit,
 ) {
   val context = LocalContext.current
+  val keyboardController = LocalSoftwareKeyboardController.current
   var linkUrl by rememberSaveable { mutableStateOf("") }
+
+  fun pasteFromClipboard() {
+    val clipboardManager =
+      context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+    val clipData = clipboardManager?.primaryClip
+    if (clipData != null && clipData.itemCount > 0) {
+      val text = clipData.getItemAt(0).text?.toString()?.trim().orEmpty()
+      if (text.isNotBlank()) {
+        linkUrl = text
+      }
+    }
+  }
+
+  fun playCurrentLink() {
+    val sanitizedUrl = linkUrl.trim()
+    if (sanitizedUrl.isBlank()) return
+
+    keyboardController?.hide()
+    onPlayLink(sanitizedUrl)
+    linkUrl = ""
+  }
 
   Column(
     modifier = Modifier.fillMaxWidth(),
@@ -332,87 +354,85 @@ private fun StreamLinkSection(
       colors = CardDefaults.cardColors(
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
       ),
+      shape = RoundedCornerShape(16.dp),
     ) {
-      Column(
-        modifier = Modifier.padding(16.dp),
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
       ) {
         OutlinedTextField(
           value = linkUrl,
           onValueChange = { linkUrl = it },
-          label = { Text("Video URL") },
+          modifier = Modifier.weight(1f),
           placeholder = {
             Text(
-              text = "https://example.com/video.mp4",
-              color = MaterialTheme.colorScheme.onSurfaceVariant,
+              text = "Enter stream URL…",
+              color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
             )
           },
           leadingIcon = {
             Icon(
               imageVector = Icons.Filled.Link,
               contentDescription = null,
-              tint = MaterialTheme.colorScheme.onSurfaceVariant,
+              tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+              modifier = Modifier.size(20.dp),
             )
           },
-          modifier = Modifier.fillMaxWidth(),
-          singleLine = true,
-        )
-        Row(
-          modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 12.dp),
-          horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-        ) {
-          FilledTonalButton(
-            onClick = {
-              val clipboardManager =
-                context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
-              val clipData = clipboardManager?.primaryClip
-              if (clipData != null && clipData.itemCount > 0) {
-                val text = clipData.getItemAt(0).text?.toString() ?: ""
-                if (text.isNotBlank()) {
-                  linkUrl = text
+          trailingIcon = {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+            ) {
+              IconButton(onClick = { pasteFromClipboard() }) {
+                Icon(
+                  imageVector = Icons.Filled.ContentPaste,
+                  contentDescription = "Paste stream URL",
+                  modifier = Modifier.size(18.dp),
+                )
+              }
+              if (linkUrl.isNotBlank()) {
+                IconButton(onClick = { linkUrl = "" }) {
+                  Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Clear stream URL",
+                    modifier = Modifier.size(18.dp),
+                  )
                 }
               }
-            },
-            colors = ButtonDefaults.filledTonalButtonColors(
-              containerColor = MaterialTheme.colorScheme.secondaryContainer,
-              contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-            ),
-          ) {
-            Icon(
-              imageVector = Icons.Filled.ContentPaste,
-              contentDescription = null,
-              modifier = Modifier.padding(end = 8.dp),
-            )
-            Text(
-              text = "Paste",
-              fontWeight = FontWeight.Bold,
-            )
-          }
-
-          FilledTonalButton(
-            onClick = {
-              if (linkUrl.isNotBlank()) {
-                onPlayLink(linkUrl)
-                linkUrl = ""
-              }
-            },
-            enabled = linkUrl.isNotBlank(),
-            colors = ButtonDefaults.filledTonalButtonColors(
-              containerColor = MaterialTheme.colorScheme.primaryContainer,
-              contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            ),
-          ) {
-            Icon(
-              imageVector = Icons.Filled.PlayArrow,
-              contentDescription = null,
-              modifier = Modifier.padding(end = 8.dp),
-            )
-            Text(
-              text = "Play",
-              fontWeight = FontWeight.Bold,
-            )
-          }
+            }
+          },
+          singleLine = true,
+          shape = RoundedCornerShape(14.dp),
+          colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+          ),
+          keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+          keyboardActions = KeyboardActions(
+            onGo = { playCurrentLink() },
+          ),
+        )
+        Spacer(modifier = Modifier.size(6.dp))
+        Button(
+          onClick = { playCurrentLink() },
+          enabled = linkUrl.isNotBlank(),
+          contentPadding = PaddingValues(12.dp),
+          shape = RoundedCornerShape(14.dp),
+          colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.primary,
+          ),
+          modifier = Modifier.semantics {
+            contentDescription = "Play stream"
+          },
+        ) {
+          Icon(
+            imageVector = Icons.Filled.PlayArrow,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+          )
         }
       }
     }

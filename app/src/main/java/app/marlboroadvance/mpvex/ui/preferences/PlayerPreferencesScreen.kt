@@ -27,6 +27,7 @@ import app.marlboroadvance.mpvex.presentation.Screen
 import app.marlboroadvance.mpvex.ui.player.PlayerOrientation
 import app.marlboroadvance.mpvex.ui.player.controls.components.sheets.toFixed
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
+import app.marlboroadvance.mpvex.ui.utils.popSafely
 import kotlinx.serialization.Serializable
 import app.marlboroadvance.mpvex.ui.player.ControlsAnimationStyle
 import app.marlboroadvance.mpvex.ui.player.NavigationAnimStyle
@@ -58,7 +59,7 @@ object PlayerPreferencesScreen : Screen {
             ) 
           },
           navigationIcon = {
-            IconButton(onClick = backstack::removeLastOrNull) {
+            IconButton(onClick = { backstack.popSafely() }) {
               Icon(
                 Icons.Outlined.ArrowBack, 
                 contentDescription = null,
@@ -524,6 +525,3 @@ object PlayerPreferencesScreen : Screen {
 }
 
 private fun Float.toFixed1(): String = "%.1f".format(this)
-
-
-

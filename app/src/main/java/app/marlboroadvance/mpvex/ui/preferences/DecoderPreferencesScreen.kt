@@ -44,6 +44,7 @@ import app.marlboroadvance.mpvex.presentation.Screen
 import app.marlboroadvance.mpvex.ui.player.Debanding
 import app.marlboroadvance.mpvex.ui.player.MPVProfile
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
+import app.marlboroadvance.mpvex.ui.utils.popSafely
 import app.marlboroadvance.mpvex.ui.preferences.VulkanUtils
 import kotlinx.serialization.Serializable
 import me.zhanghai.compose.preference.ListPreference
@@ -73,7 +74,7 @@ object DecoderPreferencesScreen : Screen {
             )
           },
           navigationIcon = {
-            IconButton(onClick = backstack::removeLastOrNull) {
+            IconButton(onClick = { backstack.popSafely() }) {
               Icon(
                 Icons.Default.ArrowBack,
                 contentDescription = null,
@@ -353,6 +354,3 @@ object VulkanUtils {
         }
     }
 }
-
-
-

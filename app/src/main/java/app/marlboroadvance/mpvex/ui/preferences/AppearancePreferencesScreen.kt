@@ -42,6 +42,7 @@ import app.marlboroadvance.mpvex.presentation.components.ConfirmDialog
 import app.marlboroadvance.mpvex.ui.preferences.components.ThemePicker
 import app.marlboroadvance.mpvex.ui.theme.DarkMode
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
+import app.marlboroadvance.mpvex.ui.utils.popSafely
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.Dispatchers
@@ -153,7 +154,7 @@ object AppearancePreferencesScreen : Screen {
                         )
                     },
                     navigationIcon = {
-                        IconButton(onClick = backstack::removeLastOrNull) {
+                        IconButton(onClick = { backstack.popSafely() }) {
                             Icon(
                                 Icons.Outlined.ArrowBack,
                                 contentDescription = null,
@@ -458,6 +459,3 @@ object AppearancePreferencesScreen : Screen {
         }
     }
 }
-
-
-

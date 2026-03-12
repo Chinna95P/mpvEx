@@ -50,6 +50,7 @@ import app.marlboroadvance.mpvex.preferences.SeekbarStyle
 import app.marlboroadvance.mpvex.preferences.preference.collectAsState
 import app.marlboroadvance.mpvex.presentation.Screen
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
+import app.marlboroadvance.mpvex.ui.utils.popSafely
 import kotlinx.serialization.Serializable
 import me.zhanghai.compose.preference.ListPreference
 import me.zhanghai.compose.preference.ProvidePreferenceLocals
@@ -109,7 +110,7 @@ object PlayerControlsPreferencesScreen : Screen {
             )
           },
           navigationIcon = {
-            IconButton(onClick = backstack::removeLastOrNull) {
+            IconButton(onClick = { backstack.popSafely() }) {
               Icon(
                 Icons.Outlined.ArrowBack, 
                 contentDescription = null,
@@ -396,6 +397,3 @@ object PlayerControlsPreferencesScreen : Screen {
     }
   }
 }
-
-
-

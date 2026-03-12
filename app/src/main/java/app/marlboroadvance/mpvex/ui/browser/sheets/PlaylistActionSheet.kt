@@ -237,6 +237,7 @@ fun PlaylistActionSheet(
   // M3U Playlist Dialog
   if (showM3UDialog) {
     var playlistUrl by remember { mutableStateOf("") }
+    var playlistUserAgent by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
 
@@ -290,6 +291,15 @@ fun PlaylistActionSheet(
               label = { Text("Playlist URL") },
               singleLine = false,
               maxLines = 3,
+              modifier = Modifier.fillMaxWidth(),
+              enabled = !isLoading
+            )
+
+            OutlinedTextField(
+              value = playlistUserAgent,
+              onValueChange = { playlistUserAgent = it },
+              label = { Text("Custom User-Agent (optional)") },
+              singleLine = true,
               modifier = Modifier.fillMaxWidth(),
               enabled = !isLoading
             )
@@ -355,7 +365,11 @@ fun PlaylistActionSheet(
                 if (playlistUrl.isNotBlank()) {
                   isLoading = true
                   coroutineScope.launch {
-                    val result = repository.createM3UPlaylist(playlistUrl.trim())
+                    val result =
+                      repository.createM3UPlaylist(
+                        playlistUrl.trim(),
+                        playlistUserAgent.trim().takeIf { it.isNotEmpty() },
+                      )
                     result.onSuccess {
                       android.widget.Toast.makeText(
                         context,

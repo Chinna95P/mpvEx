@@ -92,6 +92,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import app.marlboroadvance.mpvex.R
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
+import app.marlboroadvance.mpvex.ui.utils.popSafely
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -236,7 +237,7 @@ object CustomButtonScreen : Screen {
                         }
                     },
                     navigationIcon = {
-                        IconButton(onClick = backstack::removeLastOrNull) {
+                        IconButton(onClick = { backstack.popSafely() }) {
                             Icon(
                                 Icons.Outlined.ArrowBack,
                                 contentDescription = "Back",
@@ -1167,6 +1168,3 @@ private fun unescapeXml(text: String): String {
         .replace("&apos;", "'")
         .replace("&amp;", "&")
 }
-
-
-

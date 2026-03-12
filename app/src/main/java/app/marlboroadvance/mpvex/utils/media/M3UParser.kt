@@ -17,8 +17,13 @@ data class M3UPlaylistItem(
   val url: String,
   val title: String? = null,
   val duration: Int = -1, // Duration in seconds, -1 if unknown
+  val tvgId: String? = null, // TVG channel ID (e.g. EPG mapping)
+  val tvgName: String? = null, // TVG display name override
   val tvgLogo: String? = null, // Logo URL if present in EXTINF
   val groupTitle: String? = null, // Group title for categorization
+  val licenseType: String? = null, // DRM license type (e.g. com.widevine.alpha)
+  val licenseKey: String? = null, // DRM license key URL
+  val userAgent: String? = null, // Per-stream user-agent from EXTVLCOPT
 )
 
 /**
@@ -36,11 +41,22 @@ sealed class M3UParseResult {
 object M3UParser {
   private const val TAG = "M3UParser"
   private const val TIMEOUT_MS = 15000
-  
+  private const val DEFAULT_USER_AGENT = "mpvEx/1.0"
+
+  private const val EXTINF_PREFIX = "#EXTINF:"
+  private const val KODIPROP_PREFIX = "#KODIPROP:"
+  private const val EXTVLCOPT_PREFIX = "#EXTVLCOPT:"
+  private const val KODI_LICENSE_TYPE = "inputstream.adaptive.license_type"
+  private const val KODI_LICENSE_KEY  = "inputstream.adaptive.license_key"
+
+  private val kodiPropRegex = """([^=]+)=(.+)""".toRegex()
+  private val extinfMetaRegex = """([\w\-_.]+)=\s*(?:"([^"]*)"|(\S+))""".toRegex()
+  private val extinfInfoRegex = """(-?\d+)(.*),(.*)""".toRegex()
+
   /**
    * Parse an M3U/M3U8 playlist from a URL
    */
-  suspend fun parseFromUrl(url: String): M3UParseResult = withContext(Dispatchers.IO) {
+  suspend fun parseFromUrl(url: String, userAgent: String? = null): M3UParseResult = withContext(Dispatchers.IO) {
     try {
       Log.d(TAG, "Parsing M3U playlist from URL: $url")
       
@@ -49,7 +65,7 @@ object M3UParser {
       connection.connectTimeout = TIMEOUT_MS
       connection.readTimeout = TIMEOUT_MS
       connection.requestMethod = "GET"
-      connection.setRequestProperty("User-Agent", "mpvEx/1.0")
+      connection.setRequestProperty("User-Agent", userAgent?.takeIf { it.isNotBlank() } ?: DEFAULT_USER_AGENT)
       
       val responseCode = connection.responseCode
       if (responseCode != HttpURLConnection.HTTP_OK) {
@@ -102,86 +118,128 @@ object M3UParser {
    */
   fun parseContent(content: String, sourceUrl: String? = null): M3UParseResult {
     try {
-      val lines = content.lines().map { it.trim() }.filter { it.isNotEmpty() }
-      
+      val lines = content.lines().map { it.trimEnd() }.filter { it.isNotEmpty() }
+
       if (lines.isEmpty()) {
         return M3UParseResult.Error("Playlist is empty")
       }
-      
-      // Check if it's an extended M3U format
-      lines.firstOrNull()?.startsWith("#EXTM3U") == true
-      
+
       val items = mutableListOf<M3UPlaylistItem>()
       var currentTitle: String? = null
       var currentDuration: Int = -1
+      var currentTvgId: String? = null
+      var currentTvgName: String? = null
       var currentTvgLogo: String? = null
       var currentGroupTitle: String? = null
-      
+      var currentLicenseType: String? = null
+      var currentLicenseKey: String? = null
+      var currentUserAgent: String? = null
+
       val baseUrl = sourceUrl?.let { extractBaseUrl(it) }
-      
+
       for (line in lines) {
         when {
           line.startsWith("#EXTM3U") -> {
             // Playlist header, skip
             continue
           }
-          
-          line.startsWith("#EXTINF:") -> {
-            // Extended info line: #EXTINF:duration,title
-            val info = line.substring(8) // Remove "#EXTINF:"
-            val parts = info.split(",", limit = 2)
-            
-            // Parse duration
-            currentDuration = parts.firstOrNull()?.trim()?.split(" ")?.firstOrNull()?.toIntOrNull() ?: -1
-            
-            // Parse title (second part after comma)
-            currentTitle = if (parts.size > 1) parts[1].trim() else null
-            
-            // Parse additional attributes from the duration part (tvg-logo, group-title, etc.)
-            if (parts.isNotEmpty()) {
-              val attributesPart = parts[0]
-              currentTvgLogo = extractAttribute(attributesPart, "tvg-logo")
-              currentGroupTitle = extractAttribute(attributesPart, "group-title")
+
+          line.startsWith(EXTINF_PREFIX) -> {
+            val info = line.substring(EXTINF_PREFIX.length).trim()
+            val match = extinfInfoRegex.matchEntire(info)
+            if (match != null) {
+              currentDuration = match.groups[1]?.value?.toIntOrNull() ?: -1
+              currentTitle = match.groups[3]?.value?.trim()?.ifBlank { null }
+              val metaText = match.groups[2]?.value.orEmpty().trim()
+              for (m in extinfMetaRegex.findAll(metaText)) {
+                val key   = m.groups[1]?.value?.trim() ?: continue
+                val value = (m.groups[2]?.value ?: m.groups[3]?.value)?.ifBlank { null } ?: continue
+                when (key) {
+                  "tvg-id"      -> currentTvgId = value
+                  "tvg-name"    -> currentTvgName = value
+                  "tvg-logo"    -> currentTvgLogo = value
+                  "group-title" -> currentGroupTitle = value
+                }
+              }
+            } else {
+              // Fallback: old comma-based split
+              val parts = info.split(",", limit = 2)
+              currentDuration = parts.firstOrNull()?.trim()?.split(" ")?.firstOrNull()?.toIntOrNull() ?: -1
+              currentTitle = if (parts.size > 1) parts[1].trim().ifBlank { null } else null
+              if (parts.isNotEmpty()) {
+                currentTvgLogo   = extractAttribute(parts[0], "tvg-logo")
+                currentGroupTitle = extractAttribute(parts[0], "group-title")
+                currentTvgId      = extractAttribute(parts[0], "tvg-id")
+                currentTvgName    = extractAttribute(parts[0], "tvg-name")
+              }
             }
           }
-          
+
+          line.startsWith(KODIPROP_PREFIX) -> {
+            val kodi = line.substring(KODIPROP_PREFIX.length).trim()
+            val m = kodiPropRegex.matchEntire(kodi) ?: continue
+            val key   = m.groups[1]?.value?.trim() ?: continue
+            val value = m.groups[2]?.value?.trim()?.ifBlank { null } ?: continue
+            when (key) {
+              KODI_LICENSE_TYPE -> currentLicenseType = value
+              KODI_LICENSE_KEY  -> currentLicenseKey  = value
+            }
+          }
+
+          line.startsWith(EXTVLCOPT_PREFIX) -> {
+            val opt = line.substring(EXTVLCOPT_PREFIX.length).trim()
+            if (opt.startsWith("http-user-agent=")) {
+              currentUserAgent = opt.removePrefix("http-user-agent=").trim()
+            }
+          }
+
           line.startsWith("#EXT-X-") -> {
-            // HLS-specific tags, skip for now
+            // HLS-specific tags, skip
             continue
           }
-          
+
           line.startsWith("#") -> {
-            // Other comment lines, skip
             continue
           }
-          
+
           else -> {
             // This is a media URL
-            var mediaUrl = line
-            
+            var mediaUrl = line.trim()
+            if (mediaUrl.isEmpty()) continue
+
             // If URL is relative and we have a base URL, make it absolute
             if (!mediaUrl.startsWith("http://") && !mediaUrl.startsWith("https://") && baseUrl != null) {
               mediaUrl = resolveRelativeUrl(baseUrl, mediaUrl)
             }
-            
+
             // Generate a title if none was provided
-            val title = currentTitle ?: extractTitleFromUrl(mediaUrl)
-            
+            val title = currentTitle ?: currentTvgName ?: extractTitleFromUrl(mediaUrl)
+
             items.add(
               M3UPlaylistItem(
                 url = mediaUrl,
                 title = title,
                 duration = currentDuration,
+                tvgId = currentTvgId,
+                tvgName = currentTvgName,
                 tvgLogo = currentTvgLogo,
-                groupTitle = currentGroupTitle
+                groupTitle = currentGroupTitle,
+                licenseType = currentLicenseType,
+                licenseKey = currentLicenseKey,
+                userAgent = currentUserAgent,
               )
             )
-            
+
             // Reset current info for next entry
             currentTitle = null
             currentDuration = -1
+            currentTvgId = null
+            currentTvgName = null
             currentTvgLogo = null
             currentGroupTitle = null
+            currentLicenseType = null
+            currentLicenseKey = null
+            currentUserAgent = null
           }
         }
       }

@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -51,6 +52,12 @@ enum class VideoOpenAnimation(val displayName: String) {
   CinemaBars("Cinema Bars"),
   None("None"),
 }
+
+/** Tracks whether the selected open animation should still cover the player while media loads. */
+data class VideoOpenAnimationState(
+  val loadToken: Long = 0L,
+  val isWaitingForVideo: Boolean = true,
+)
 
 /** Animation style for tab / screen navigation. */
 enum class NavigationAnimStyle(val displayName: String) {
@@ -196,97 +203,109 @@ fun buildControlsExitV(
 // ────────────────────────────────────────────────────────────────────────────
 
 /**
- * Draws a full-screen overlay that plays the selected [VideoOpenAnimation] once when the player
- * first appears, then disappears.  No-op when [style] is [VideoOpenAnimation.Default] or [VideoOpenAnimation.None].
+ * Draws a full-screen overlay that stays in place while media is loading, then plays the selected
+ * [VideoOpenAnimation] once the video is ready. No-op when [style] is
+ * [VideoOpenAnimation.Default] or [VideoOpenAnimation.None].
  */
 @Composable
-fun VideoOpenAnimationOverlay(style: VideoOpenAnimation, speedMultiplier: Float) {
+fun VideoOpenAnimationOverlay(
+  style: VideoOpenAnimation,
+  speedMultiplier: Float,
+  animationState: VideoOpenAnimationState,
+) {
   if (style == VideoOpenAnimation.Default || style == VideoOpenAnimation.None) return
 
   val durationMs = (400 * speedMultiplier).toInt().coerceAtLeast(100)
-  val holdMs     = (120 * speedMultiplier).toInt().coerceAtLeast(50)
+  val holdMs = (120 * speedMultiplier).toInt().coerceAtLeast(50)
 
-  var overlayVisible by remember { mutableStateOf(true) }
+  key(animationState.loadToken) {
+    var overlayVisible by remember { mutableStateOf(true) }
 
-  LaunchedEffect(Unit) {
-    delay(holdMs.toLong())
-    overlayVisible = false
-  }
-
-  when (style) {
-
-    VideoOpenAnimation.FadeDark -> {
-      AnimatedVisibility(
-        visible = overlayVisible,
-        enter = EnterTransition.None,
-        exit  = fadeOut(tween(durationMs)),
-      ) {
-        Box(
-          Modifier
-            .fillMaxSize()
-            .background(Color.Black),
-        )
+    LaunchedEffect(animationState.isWaitingForVideo) {
+      if (animationState.isWaitingForVideo) {
+        overlayVisible = true
+        return@LaunchedEffect
       }
+
+      delay(holdMs.toLong())
+      overlayVisible = false
     }
 
-    VideoOpenAnimation.ZoomBurst -> {
-      // Black mask that scales up + fades out  → video appears to "burst" in from behind.
-      AnimatedVisibility(
-        visible = overlayVisible,
-        enter = EnterTransition.None,
-        exit  = scaleOut(
-          tween(durationMs),
-          targetScale = 1.18f,
-        ) + fadeOut(tween(durationMs)),
-      ) {
-        Box(
-          Modifier
-            .fillMaxSize()
-            .background(Color.Black),
-        )
-      }
-    }
+    when (style) {
 
-    VideoOpenAnimation.SlideUp -> {
-      AnimatedVisibility(
-        visible = overlayVisible,
-        enter = EnterTransition.None,
-        exit  = slideOutVertically(
-          spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 200f),
-        ) { -it } + fadeOut(tween(durationMs)),
-      ) {
-        Box(
-          Modifier
-            .fillMaxSize()
-            .background(Color.Black),
-        )
+      VideoOpenAnimation.FadeDark -> {
+        AnimatedVisibility(
+          visible = overlayVisible,
+          enter = EnterTransition.None,
+          exit = fadeOut(tween(durationMs)),
+        ) {
+          Box(
+            Modifier
+              .fillMaxSize()
+              .background(Color.Black),
+          )
+        }
       }
-    }
 
-    VideoOpenAnimation.CinemaBars -> {
-      // Two black bars that shrink from top and bottom.
-      val barHeight by animateDpAsState(
-        targetValue = if (overlayVisible) 110.dp else 0.dp,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = 180f),
-        label = "cinema_bars",
-      )
-      Box(Modifier.fillMaxSize()) {
-        Box(
-          Modifier
-            .fillMaxWidth()
-            .height(barHeight)
-            .background(Color.Black)
-            .align(Alignment.TopCenter),
-        )
-        Box(
-          Modifier
-            .fillMaxWidth()
-            .height(barHeight)
-            .background(Color.Black)
-            .align(Alignment.BottomCenter),
-        )
+      VideoOpenAnimation.ZoomBurst -> {
+        // Black mask that scales up + fades out so the video appears to "burst" in from behind.
+        AnimatedVisibility(
+          visible = overlayVisible,
+          enter = EnterTransition.None,
+          exit = scaleOut(
+            tween(durationMs),
+            targetScale = 1.18f,
+          ) + fadeOut(tween(durationMs)),
+        ) {
+          Box(
+            Modifier
+              .fillMaxSize()
+              .background(Color.Black),
+          )
+        }
       }
-    }
 
+      VideoOpenAnimation.SlideUp -> {
+        AnimatedVisibility(
+          visible = overlayVisible,
+          enter = EnterTransition.None,
+          exit = slideOutVertically(
+            spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 200f),
+          ) { -it } + fadeOut(tween(durationMs)),
+        ) {
+          Box(
+            Modifier
+              .fillMaxSize()
+              .background(Color.Black),
+          )
+        }
+      }
+
+      VideoOpenAnimation.CinemaBars -> {
+        // Two black bars that hold while loading, then shrink away once the video is ready.
+        val barHeight by animateDpAsState(
+          targetValue = if (overlayVisible) 110.dp else 0.dp,
+          animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = 180f),
+          label = "cinema_bars",
+        )
+        Box(Modifier.fillMaxSize()) {
+          Box(
+            Modifier
+              .fillMaxWidth()
+              .height(barHeight)
+              .background(Color.Black)
+              .align(Alignment.TopCenter),
+          )
+          Box(
+            Modifier
+              .fillMaxWidth()
+              .height(barHeight)
+              .background(Color.Black)
+              .align(Alignment.BottomCenter),
+          )
+        }
+      }
+
+    }
   }
 }

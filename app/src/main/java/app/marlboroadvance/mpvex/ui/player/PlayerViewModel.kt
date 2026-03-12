@@ -253,6 +253,8 @@ class PlayerViewModel(
 
   val sheetShown = MutableStateFlow(Sheets.None)
   val panelShown = MutableStateFlow(Panels.None)
+  private val _videoOpenAnimationState = MutableStateFlow(VideoOpenAnimationState())
+  val videoOpenAnimationState: StateFlow<VideoOpenAnimationState> = _videoOpenAnimationState.asStateFlow()
 
   // Seek state — combined to allow atomic updates and reduce flow count
   data class SeekState(val text: String? = null, val amount: Int = 0, val isForwards: Boolean = false)
@@ -446,6 +448,25 @@ class PlayerViewModel(
   fun onMpvCoreInitialized() {
     isMpvReadyForCustomButtons = true
     reloadCustomButtonsScript("mpv_core_initialized")
+  }
+
+  fun onVideoLoadStarted() {
+    _videoOpenAnimationState.update {
+      it.copy(
+        loadToken = it.loadToken + 1,
+        isWaitingForVideo = true,
+      )
+    }
+  }
+
+  fun onVideoLoadCompleted() {
+    _videoOpenAnimationState.update { current ->
+      if (current.isWaitingForVideo) {
+        current.copy(isWaitingForVideo = false)
+      } else {
+        current
+      }
+    }
   }
 
   private fun setupCustomButtons() {

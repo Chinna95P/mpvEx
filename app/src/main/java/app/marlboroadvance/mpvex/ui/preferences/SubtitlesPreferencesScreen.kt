@@ -50,6 +50,7 @@ import app.marlboroadvance.mpvex.preferences.SubtitlesPreferences
 import app.marlboroadvance.mpvex.preferences.preference.collectAsState
 import app.marlboroadvance.mpvex.presentation.Screen
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
+import app.marlboroadvance.mpvex.ui.utils.popSafely
 import app.marlboroadvance.mpvex.utils.media.CustomFontEntry
 import app.marlboroadvance.mpvex.utils.media.copyFontsFromDirectory
 import app.marlboroadvance.mpvex.utils.media.loadCustomFontEntries
@@ -92,7 +93,7 @@ object SubtitlesPreferencesScreen : Screen {
           },
           navigationIcon = {
             IconButton(
-              onClick = backstack::removeLastOrNull,
+              onClick = { backstack.popSafely() },
             ) {
               Icon(
                 Icons.Outlined.ArrowBack,
@@ -657,6 +658,3 @@ fun MultiChoicePreference(
     )
   }
 }
-
-
-

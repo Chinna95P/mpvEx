@@ -55,6 +55,7 @@ import app.marlboroadvance.mpvex.ui.browser.components.BrowserTopBar
 import app.marlboroadvance.mpvex.ui.browser.selection.SelectionState
 import app.marlboroadvance.mpvex.ui.browser.states.EmptyState
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
+import app.marlboroadvance.mpvex.ui.utils.popSafely
 import app.marlboroadvance.mpvex.utils.media.MediaLibraryEvents
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -89,7 +90,7 @@ object FoldersPreferencesScreen : Screen {
           selectedCount = selectionState.selectedCount,
           totalCount = blacklistedFoldersList.size,
           onCancelSelection = { selectionState = selectionState.clear() },
-          onBackClick = backstack::removeLastOrNull,
+          onBackClick = { backstack.popSafely() },
           onDeleteClick = {
             val updated = blacklistedFolders.toMutableSet().apply {
               removeAll(selectionState.selectedIds)
@@ -538,6 +539,3 @@ private suspend fun scanAllVideoFolders(context: Application): List<VideoFolder>
       context = context
     )
 }
-
-
-
