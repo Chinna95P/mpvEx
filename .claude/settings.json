@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l /d/mpvEx/app/src/main/assets/shaders/*.glsl)",
+      "Bash(xargs grep:*)",
+      "Bash(grep -E \"\\\\.\\(kt|xml\\)$\")",
+      "Bash(grep -E \"\\\\.\\(kt\\)$\")",
+      "Bash(grep -E \"anim.*\\\\.xml$\")",
+      "Bash(grep -E \"\\\\.kt$\")",
+      "Bash(sort -t: -k2 -rn)",
+      "Bash(./gradlew :app:compileDebugKotlin)",
+      "Bash(git stash:*)",
+      "Bash(git pull:*)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git merge:*)",
+      "Bash(git fetch:*)",
+      "Bash(git reset:*)",
+      "Bash(git rm:*)"
+    ]
+  }
+}

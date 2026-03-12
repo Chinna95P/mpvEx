@@ -261,6 +261,21 @@ object SubtitlesPreferencesScreen : Screen {
 
               PreferenceDivider()
 
+              val blendSubtitles by preferences.blendSubtitlesWithVideo.collectAsState()
+              SwitchPreference(
+                value = blendSubtitles,
+                onValueChange = { preferences.blendSubtitlesWithVideo.set(it) },
+                title = { Text(stringResource(R.string.pref_sub_blend_with_video_title)) },
+                summary = {
+                  Text(
+                    stringResource(R.string.pref_sub_blend_with_video_summary),
+                    color = MaterialTheme.colorScheme.outline,
+                  )
+                },
+              )
+
+              PreferenceDivider()
+
               // Directory picker preference with reload and clear icons on the right
               Box(
                 modifier =

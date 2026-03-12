@@ -30,11 +30,15 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.marlboroadvance.mpvex.R
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.RadioButton
 import app.marlboroadvance.mpvex.domain.thumbnail.ThumbnailRepository
 import app.marlboroadvance.mpvex.preferences.AppearancePreferences
 import app.marlboroadvance.mpvex.preferences.BrowserPreferences
 import app.marlboroadvance.mpvex.preferences.GesturePreferences
 import app.marlboroadvance.mpvex.preferences.MultiChoiceSegmentedButton
+import app.marlboroadvance.mpvex.preferences.NavigationStyle
 import app.marlboroadvance.mpvex.preferences.ThumbnailMode
 import app.marlboroadvance.mpvex.preferences.preference.collectAsState
 import app.marlboroadvance.mpvex.presentation.Screen
@@ -451,6 +455,42 @@ object AppearancePreferencesScreen : Screen {
                                 },
                                 enabled = showVideoThumbnails,
                             )
+                        }
+                    }
+
+                    item {
+                        PreferenceSectionHeader(title = stringResource(id = R.string.pref_appearance_category_navigation))
+                    }
+
+                    item {
+                        val navigationStyle by preferences.navigationStyle.collectAsState()
+                        PreferenceCard {
+                            NavigationStyle.entries.forEachIndexed { index, style ->
+                                ListItem(
+                                    headlineContent = {
+                                        Text(
+                                            text = when (style) {
+                                                NavigationStyle.Slide -> stringResource(R.string.pref_appearance_nav_style_slide)
+                                                NavigationStyle.Fade -> stringResource(R.string.pref_appearance_nav_style_fade)
+                                                NavigationStyle.None -> stringResource(R.string.pref_appearance_nav_style_none)
+                                            }
+                                        )
+                                    },
+                                    trailingContent = {
+                                        RadioButton(
+                                            selected = navigationStyle == style,
+                                            onClick = null,
+                                        )
+                                    },
+                                    colors = androidx.compose.material3.ListItemDefaults.colors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                                    ),
+                                    modifier = Modifier.clickable { preferences.navigationStyle.set(style) },
+                                )
+                                if (index < NavigationStyle.entries.size - 1) {
+                                    PreferenceDivider()
+                                }
+                            }
                         }
                     }
 

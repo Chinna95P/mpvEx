@@ -139,6 +139,13 @@ class MPVView(
     MPVLib.setOptionString("speed", playerPreferences.defaultSpeed.get().toString())
     MPVLib.setOptionString("vd-lavc-film-grain", "cpu")
 
+    // Streaming improvements
+    MPVLib.setOptionString("hls-bitrate", "max")
+    MPVLib.setOptionString("http-allow-redirect", "yes")
+    // Allow seeking within already-buffered network content; slightly larger initial buffer
+    MPVLib.setOptionString("demuxer-seekable-cache", "yes")
+    MPVLib.setOptionString("stream-buffer-size", "5M")
+
     val preciseSeek = playerPreferences.usePreciseSeeking.get()
     MPVLib.setOptionString("hr-seek", if (preciseSeek) "yes" else "no")
     MPVLib.setOptionString("hr-seek-framedrop", if (preciseSeek) "no" else "yes")
@@ -234,6 +241,8 @@ class MPVView(
     MPVLib.setOptionString("audio-delay", (audioPreferences.defaultAudioDelay.get() / 1000.0).toString())
     MPVLib.setOptionString("audio-pitch-correction", audioPreferences.audioPitchCorrection.get().toString())
     MPVLib.setOptionString("volume-max", (audioPreferences.volumeBoostCap.get() + 100).toString())
+    // Prevent automatic volume normalization when downmixing multi-channel audio
+    MPVLib.setOptionString("audio-normalize-downmix", "no")
     
     // Volume normalization using dynamic audio normalization filter
     if (audioPreferences.volumeNormalization.get()) {
@@ -252,6 +261,12 @@ class MPVView(
 
     val fontsDirPath = "${context.filesDir.path}/fonts/"
     MPVLib.setOptionString("sub-fonts-dir", fontsDirPath)
+    // Auto-detect subtitle encoding
+    MPVLib.setOptionString("sub-codepage", "auto")
+    // Allow embedded fonts from MKV/MP4 containers
+    MPVLib.setOptionString("embeddedfonts", "yes")
+    // Auto-detect font provider (system fonts, embedded fonts, etc.)
+    MPVLib.setOptionString("sub-font-provider", "auto")
     
     // Delay and speed for both primary and secondary
     val subDelay = (subtitlesPreferences.defaultSubDelay.get() / 1000.0).toString()
@@ -323,6 +338,12 @@ class MPVView(
     MPVLib.setOptionString("sub-use-margins", scaleByWindow)
     MPVLib.setOptionString("secondary-sub-scale-by-window", scaleByWindow)
     MPVLib.setOptionString("secondary-sub-use-margins", scaleByWindow)
+
+    // Blend subtitles into video before shader processing (e.g. Anime4K)
+    // When enabled, subtitles are rendered at video resolution and processed by shaders
+    if (subtitlesPreferences.blendSubtitlesWithVideo.get()) {
+      MPVLib.setOptionString("blend-subtitles", "video")
+    }
   }
 
 

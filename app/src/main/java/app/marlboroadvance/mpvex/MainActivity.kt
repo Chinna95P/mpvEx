@@ -8,14 +8,18 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -32,6 +36,7 @@ import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
 import app.marlboroadvance.mpvex.preferences.AppearancePreferences
+import app.marlboroadvance.mpvex.preferences.NavigationStyle
 import app.marlboroadvance.mpvex.preferences.preference.collectAsState
 import app.marlboroadvance.mpvex.presentation.Screen
 import app.marlboroadvance.mpvex.repository.NetworkRepository
@@ -52,25 +57,39 @@ import org.koin.android.ext.android.inject
 
 private const val NAV_TRANSITION_DURATION_MS = 180
 
-private fun forwardNavTransition(): ContentTransform =
-  slideInHorizontally(
-    animationSpec = tween(NAV_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
-    initialOffsetX = { fullWidth -> fullWidth },
-  ) togetherWith
-    slideOutHorizontally(
-      animationSpec = tween(NAV_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
-      targetOffsetX = { fullWidth -> -fullWidth / 8 },
-    )
+private fun forwardNavTransition(style: NavigationStyle = NavigationStyle.Slide): ContentTransform =
+  when (style) {
+    NavigationStyle.Slide ->
+      slideInHorizontally(
+        animationSpec = tween(NAV_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+        initialOffsetX = { fullWidth -> fullWidth },
+      ) togetherWith
+        slideOutHorizontally(
+          animationSpec = tween(NAV_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+          targetOffsetX = { fullWidth -> -fullWidth / 8 },
+        )
+    NavigationStyle.Fade ->
+      fadeIn(tween(NAV_TRANSITION_DURATION_MS)) togetherWith fadeOut(tween(NAV_TRANSITION_DURATION_MS))
+    NavigationStyle.None ->
+      EnterTransition.None togetherWith ExitTransition.None
+  }
 
-private fun backwardNavTransition(): ContentTransform =
-  slideInHorizontally(
-    animationSpec = tween(NAV_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
-    initialOffsetX = { fullWidth -> -fullWidth / 5 },
-  ) togetherWith
-    slideOutHorizontally(
-      animationSpec = tween(NAV_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
-      targetOffsetX = { fullWidth -> fullWidth },
-    )
+private fun backwardNavTransition(style: NavigationStyle = NavigationStyle.Slide): ContentTransform =
+  when (style) {
+    NavigationStyle.Slide ->
+      slideInHorizontally(
+        animationSpec = tween(NAV_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+        initialOffsetX = { fullWidth -> -fullWidth / 5 },
+      ) togetherWith
+        slideOutHorizontally(
+          animationSpec = tween(NAV_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+          targetOffsetX = { fullWidth -> fullWidth },
+        )
+    NavigationStyle.Fade ->
+      fadeIn(tween(NAV_TRANSITION_DURATION_MS)) togetherWith fadeOut(tween(NAV_TRANSITION_DURATION_MS))
+    NavigationStyle.None ->
+      EnterTransition.None togetherWith ExitTransition.None
+  }
 
 /**
  * Main entry point for the application
@@ -78,7 +97,7 @@ private fun backwardNavTransition(): ContentTransform =
 class MainActivity : ComponentActivity() {
   private val appearancePreferences by inject<AppearancePreferences>()
   private val networkRepository by inject<NetworkRepository>()
-  
+
   // Create a coroutine scope tied to the activity lifecycle
   private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -91,7 +110,7 @@ class MainActivity : ComponentActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-    
+
     PermissionUtils.setMediaAccessLauncher(mediaAccessLauncher)
 
     // Register proxy lifecycle observer for network streaming
@@ -136,7 +155,7 @@ class MainActivity : ComponentActivity() {
   private suspend fun autoConnectToNetworks() {
     // Delay auto-connect to let UI settle first
     kotlinx.coroutines.delay(500)
-    
+
     // Use coroutineScope for properly structured concurrency
     withContext(Dispatchers.IO) {
       try {
@@ -174,6 +193,8 @@ class MainActivity : ComponentActivity() {
 
     @Suppress("UNCHECKED_CAST")
     val typedBackstack = backstack as NavBackStack<Screen>
+
+    val navigationStyle by appearancePreferences.navigationStyle.collectAsState()
 
     val context = LocalContext.current
     val currentVersion = BuildConfig.VERSION_NAME.replace("-dev", "")
@@ -220,9 +241,9 @@ class MainActivity : ComponentActivity() {
             }
           },
           sizeTransform = null,
-          transitionSpec = { forwardNavTransition() },
-          popTransitionSpec = { backwardNavTransition() },
-          predictivePopTransitionSpec = { _: Int -> backwardNavTransition() },
+          transitionSpec = { forwardNavTransition(navigationStyle) },
+          popTransitionSpec = { backwardNavTransition(navigationStyle) },
+          predictivePopTransitionSpec = { _: Int -> backwardNavTransition(navigationStyle) },
         )
       }
 

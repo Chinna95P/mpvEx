@@ -320,6 +320,7 @@ fun PlayerControls(
         val isVolumeSliderShown by viewModel.isVolumeSliderShown.collectAsState()
         val brightness by viewModel.currentBrightness.collectAsState()
         val volume by viewModel.currentVolume.collectAsState()
+        val volumePercent by viewModel.currentVolumePercent.collectAsState()
         val mpvVolume by MPVLib.propInt["volume"].collectAsState()
         val swapVolumeAndBrightness by playerPreferences.swapVolumeAndBrightness.collectAsState()
         val reduceMotion by playerPreferences.reduceMotion.collectAsState()
@@ -411,6 +412,7 @@ fun PlayerControls(
           
           VolumeSlider(
             volume,
+            volumePercentage = volumePercent,
             mpvVolume = mpvVolume ?: 100,
             range = 0..viewModel.maxVolume,
             boostRange = if (showBoost) 0..effBoostCap else null,

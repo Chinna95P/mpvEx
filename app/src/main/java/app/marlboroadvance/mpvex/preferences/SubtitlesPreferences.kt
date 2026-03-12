@@ -37,7 +37,9 @@ class SubtitlesPreferences(
 
   val defaultSubDelay = preferenceStore.getInt("sub_default_delay")
   val defaultSubSpeed = preferenceStore.getFloat("sub_default_speed", 1f)
-  
+  // Blend subtitles into video before shader processing (improves quality with Anime4K)
+  val blendSubtitlesWithVideo = preferenceStore.getBoolean("sub_blend_with_video", false)
+
   val pickerPath = preferenceStore.getString("sub_picker_path")
   
   val subdlApiKey = preferenceStore.getString("subdl_api_key", "")

@@ -55,11 +55,17 @@ class Anime4KManager(private val context: Context) {
         }
       }
 
-      // List and copy all shader files from assets
+      // List all shader files from assets
       val shaderFiles = context.assets.list(SHADER_DIR) ?: emptyArray()
+      val glslFiles = shaderFiles.filter { it.endsWith(".glsl") }
 
-      for (fileName in shaderFiles) {
-        if (fileName.endsWith(".glsl")) {
+      // If all shader files already exist and are non-empty, skip the entire copy operation
+      val allFilesExist = glslFiles.isNotEmpty() && glslFiles.all { fileName ->
+        File(shaderDir, fileName).let { it.exists() && it.length() > 0 }
+      }
+
+      if (!allFilesExist) {
+        for (fileName in glslFiles) {
           copyShaderFromAssets(fileName)
         }
       }

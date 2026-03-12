@@ -61,6 +61,7 @@ import app.marlboroadvance.mpvex.preferences.AdvancedPreferences
 import app.marlboroadvance.mpvex.preferences.DecoderPreferences
 import kotlin.properties.ReadOnlyProperty
 import kotlin.reflect.KProperty
+import kotlin.math.roundToInt
 
 
 enum class RepeatMode {
@@ -167,7 +168,9 @@ class PlayerViewModel(
   val preciseDuration = _preciseDuration.asStateFlow()
 
   // Audio state
+  val maxVolume = host.audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
   val currentVolume = MutableStateFlow(host.audioManager.getStreamVolume(AudioManager.STREAM_MUSIC))
+  val currentVolumePercent = MutableStateFlow(systemVolumeToPercent(currentVolume.value))
   private val volumeBoostCap by MPVLib.propInt["volume-max"].collectAsState(viewModelScope)
 
   init {
@@ -204,8 +207,6 @@ class PlayerViewModel(
       }
     }
   }
-  val maxVolume = host.audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-
   val subtitleTracks: StateFlow<List<TrackNode>> =
     MPVLib.propNode["track-list"]
       .map { node ->
@@ -1310,6 +1311,21 @@ class PlayerViewModel(
     changeVolumeTo(currentSystemVolume + change)
   }
 
+  fun changeVolumePercentTo(volumePercent: Int) {
+    val newPercent = volumePercent.coerceIn(0, 100)
+    val newVolume = percentToSystemVolume(newPercent)
+    host.audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVolume, 0)
+    currentVolume.value = syncCurrentSystemVolume()
+    currentVolumePercent.value = newPercent
+
+    if (currentVolume.value < maxVolume) {
+      val currentMpvVolume = MPVLib.getPropertyInt("volume") ?: 100
+      if (currentMpvVolume > 100) {
+        changeMPVVolumeTo(100)
+      }
+    }
+  }
+
   fun changeVolumeTo(volume: Int) {
     val newVolume = volume.coerceIn(0..maxVolume)
     host.audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVolume, 0)
@@ -1328,7 +1344,6 @@ class PlayerViewModel(
   }
 
   fun displayVolumeSlider() {
-    syncCurrentSystemVolume()
     isVolumeSliderShown.value = true
     volumeSliderTimestamp.value = System.currentTimeMillis()
   }
@@ -1347,7 +1362,22 @@ class PlayerViewModel(
   private fun syncCurrentSystemVolume(): Int {
     val systemVolume = host.audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
     currentVolume.value = systemVolume
+    currentVolumePercent.value = systemVolumeToPercent(systemVolume)
     return systemVolume
+  }
+
+  fun syncCurrentVolumeState() {
+    syncCurrentSystemVolume()
+  }
+
+  private fun systemVolumeToPercent(systemVolume: Int): Int {
+    if (maxVolume <= 0) return 0
+    return ((systemVolume.toFloat() / maxVolume.toFloat()) * 100f).roundToInt().coerceIn(0, 100)
+  }
+
+  private fun percentToSystemVolume(volumePercent: Int): Int {
+    if (maxVolume <= 0) return 0
+    return ((volumePercent / 100f) * maxVolume.toFloat()).roundToInt().coerceIn(0, maxVolume)
   }
 
   // ==================== Video Aspect ====================
@@ -2328,6 +2358,8 @@ class PlayerViewModel(
     runCatching {
       MPVLib.setPropertyDouble("video-scale-x", 1.0)
       MPVLib.setPropertyDouble("video-scale-y", 1.0)
+      // Restore automatic ASS subtitle aspect ratio
+      MPVLib.setPropertyDouble("sub-ass-video-aspect-override", -1.0)
     }
   }
 
@@ -2586,6 +2618,9 @@ class PlayerViewModel(
         MPVLib.setPropertyDouble("video-scale-x", scaleX)
         MPVLib.setPropertyDouble("video-scale-y", scaleY)
       }
+      // Lock ASS sign subtitle positions to the original video aspect ratio.
+      // Without this, absolute-positioned signs shift when video-scale-x/y != 1.0.
+      MPVLib.setPropertyDouble("sub-ass-video-aspect-override", vidAr)
 
       // ── Snapshot current parameter values ─────────────────────────────────
       val sx      = lastAmbientScaleX

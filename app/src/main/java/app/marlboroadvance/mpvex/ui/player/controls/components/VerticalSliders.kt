@@ -27,7 +27,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.marlboroadvance.mpvex.R
 import app.marlboroadvance.mpvex.ui.theme.spacing
-import kotlin.math.roundToInt
 
 fun percentage(
   value: Float,
@@ -183,13 +182,14 @@ fun BrightnessSlider(
 @Composable
 fun VolumeSlider(
   volume: Int,
+  volumePercentage: Int,
   mpvVolume: Int,
   range: ClosedRange<Int>,
   boostRange: ClosedRange<Int>?,
   modifier: Modifier = Modifier,
   displayAsPercentage: Boolean = false,
 ) {
-  val percentage = (percentage(volume, range) * 100).roundToInt()
+  val percentage = volumePercentage.coerceIn(0, 100)
   Surface(
     modifier = modifier,
     shape = RoundedCornerShape(24.dp),
