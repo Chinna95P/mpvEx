@@ -4,9 +4,12 @@ package app.marlboroadvance.mpvex.preferences
 import app.marlboroadvance.mpvex.preferences.preference.PreferenceStore
 import app.marlboroadvance.mpvex.preferences.preference.getEnum
 import app.marlboroadvance.mpvex.ui.player.AmbientVisualMode
+import app.marlboroadvance.mpvex.ui.player.ControlsAnimationStyle
+import app.marlboroadvance.mpvex.ui.player.NavigationAnimStyle
 import app.marlboroadvance.mpvex.ui.player.PlayerOrientation
 import app.marlboroadvance.mpvex.ui.player.RepeatMode
 import app.marlboroadvance.mpvex.ui.player.VideoAspect
+import app.marlboroadvance.mpvex.ui.player.VideoOpenAnimation
 
 class PlayerPreferences(
   preferenceStore: PreferenceStore,
@@ -94,4 +97,17 @@ class PlayerPreferences(
   val ambientExtendDetailProtection = preferenceStore.getFloat("ambient_extend_detail_protection", 0.60f)
   val ambientExtendGlowMix = preferenceStore.getFloat("ambient_extend_glow_mix", 0.20f)
   val isAmbientEnabled = preferenceStore.getBoolean("ambient_enabled", false)
+
+  // ── Animation settings ──────────────────────────────────────────────────
+  /** Style used for controls appearing / disappearing. Default = original slide+fade behaviour. */
+  val controlsAnimStyle = preferenceStore.getEnum("controls_anim_style", ControlsAnimationStyle.Default)
+
+  /** Animation played when a video first opens. Default = no overlay. */
+  val videoOpenAnimation = preferenceStore.getEnum("video_open_animation", VideoOpenAnimation.Default)
+
+  /** Tab-switching animation style in the main browser. */
+  val navAnimStyle = preferenceStore.getEnum("nav_anim_style", NavigationAnimStyle.Default)
+
+  /** Global animation speed multiplier (0.5 = half speed, 2.0 = double speed). */
+  val animationSpeed = preferenceStore.getFloat("animation_speed", 1.0f)
 }

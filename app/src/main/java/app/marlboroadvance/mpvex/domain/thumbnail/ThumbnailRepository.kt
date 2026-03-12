@@ -3,6 +3,9 @@ package app.marlboroadvance.mpvex.domain.thumbnail
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.MediaMetadataRetriever
+import android.os.Build
 import android.util.LruCache
 import app.marlboroadvance.mpvex.domain.media.model.Video
 import coil3.ImageLoader
@@ -291,7 +294,81 @@ class ThumbnailRepository(
       path.startsWith("rtmp://", ignoreCase = true) ||
       path.startsWith("rtsp://", ignoreCase = true) ||
       path.startsWith("ftp://", ignoreCase = true) ||
-      path.startsWith("sftp://", ignoreCase = true)
+      path.startsWith("sftp://", ignoreCase = true) ||
+      path.startsWith("smb://", ignoreCase = true)
+
+  private fun isHttpUrl(path: String): Boolean =
+    path.startsWith("http://", ignoreCase = true) ||
+      path.startsWith("https://", ignoreCase = true)
+
+  /**
+   * Retrieve a thumbnail for a raw network file path (for use from [NetworkVideoCard]).
+   * Only works for HTTP/HTTPS URLs — other protocols return null.
+   * Respects the [showNetworkThumbnails] preference gate.
+   */
+  suspend fun getThumbnailForNetworkPath(
+    path: String,
+    widthPx: Int,
+    heightPx: Int,
+  ): Bitmap? = withContext(Dispatchers.IO) {
+    if (!appearancePreferences.showNetworkThumbnails.get()) return@withContext null
+    if (!isHttpUrl(path)) return@withContext null
+
+    val memKey  = "$path|network|$widthPx|$heightPx|${thumbnailModeKey()}"
+    val diskKey = "video-thumb|$path|network|${thumbnailModeKey()}"
+
+    // Memory cache hit
+    synchronized(memoryCache) { memoryCache.get(memKey) }?.let { return@withContext it }
+
+    // Disk cache hit
+    imageLoader.diskCache?.openSnapshot(diskKey)?.use { snapshot ->
+      BitmapFactory.decodeStream(snapshot.data.toFile().inputStream())?.let { bmp ->
+        val scaled = scaleBitmap(bmp, widthPx, heightPx)
+        synchronized(memoryCache) { memoryCache.put(memKey, scaled) }
+        return@withContext scaled
+      }
+    }
+
+    // Extract directly via MediaMetadataRetriever HTTP streaming (efficient — only seeks header bytes)
+    val bitmap = runCatching {
+      val mmr = MediaMetadataRetriever()
+      try {
+        mmr.setDataSource(path, emptyMap())
+        val raw = mmr.getFrameAtTime(0) ?: return@runCatching null
+        // Rotate if needed
+        val rotation = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+        val rotated = if (rotation != 0) {
+          val m = Matrix().apply { postRotate(rotation.toFloat()) }
+          val r = Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, m, true)
+          if (r != raw) raw.recycle()
+          r
+        } else raw
+        scaleBitmap(rotated, widthPx, heightPx)
+      } finally {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) mmr.close() else mmr.release()
+      }
+    }.getOrNull() ?: return@withContext null
+
+    // Write to disk cache
+    imageLoader.diskCache?.openEditor(diskKey)?.let { editor ->
+      try {
+        editor.data.toFile().outputStream().use { out ->
+          bitmap.compress(Bitmap.CompressFormat.JPEG, 80, out)
+        }
+        editor.commit()
+      } catch (_: Exception) {
+        runCatching { editor.abort() }
+      }
+    }
+
+    synchronized(memoryCache) { memoryCache.put(memKey, bitmap) }
+    _thumbnailReadyKeys.tryEmit(memKey)
+    bitmap
+  }
+
+  /** The memory-cache key used by [getThumbnailForNetworkPath]. */
+  fun thumbnailKeyForNetworkPath(path: String, widthPx: Int, heightPx: Int): String =
+    "$path|network|$widthPx|$heightPx|${thumbnailModeKey()}"
 
   private fun folderSignature(
     videos: List<Video>,

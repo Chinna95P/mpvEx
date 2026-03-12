@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
@@ -172,7 +171,7 @@ fun SeekbarWithTimers(
           clickEvent()
           positionTimerOnClick()
         },
-        modifier = Modifier.wrapContentWidth(),
+        modifier = Modifier.width(60.dp),
       )
 
       SeekbarContent(
@@ -201,7 +200,7 @@ fun SeekbarWithTimers(
           clickEvent()
           durationTimerOnCLick()
         },
-        modifier = Modifier.wrapContentWidth(),
+        modifier = Modifier.width(60.dp),
       )
     }
   }

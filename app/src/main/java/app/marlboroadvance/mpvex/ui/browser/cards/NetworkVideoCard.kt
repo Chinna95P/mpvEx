@@ -3,6 +3,8 @@ package app.marlboroadvance.mpvex.ui.browser.cards
 import app.marlboroadvance.mpvex.ui.icons.Icon
 import app.marlboroadvance.mpvex.ui.icons.Icons
 
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,23 +23,34 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.marlboroadvance.mpvex.domain.thumbnail.ThumbnailRepository
 import app.marlboroadvance.mpvex.preferences.AppearancePreferences
 import app.marlboroadvance.mpvex.preferences.BrowserPreferences
 import app.marlboroadvance.mpvex.preferences.preference.collectAsState
 import app.marlboroadvance.mpvex.domain.network.NetworkConnection
 import app.marlboroadvance.mpvex.domain.network.NetworkFile
 import androidx.compose.foundation.combinedClickable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 
 @Composable
 fun NetworkVideoCard(
@@ -49,12 +62,45 @@ fun NetworkVideoCard(
   isSelected: Boolean = false,
 ) {
   val appearancePreferences = koinInject<AppearancePreferences>()
-  val browserPreferences = koinInject<BrowserPreferences>()
+  val browserPreferences   = koinInject<BrowserPreferences>()
+  val thumbnailRepository  = koinInject<ThumbnailRepository>()
+
   val unlimitedNameLines by appearancePreferences.unlimitedNameLines.collectAsState()
-  val showSizeChip by browserPreferences.showSizeChip.collectAsState()
+  val showSizeChip       by browserPreferences.showSizeChip.collectAsState()
+  val showNetworkThumbs  by appearancePreferences.showNetworkThumbnails.collectAsState()
   val maxLines = if (unlimitedNameLines) Int.MAX_VALUE else 2
 
   val thumbSizeDp = 64.dp
+  val density = LocalDensity.current
+  val thumbSizePx = with(density) { thumbSizeDp.roundToPx() }
+
+  val thumbnailKey = remember(file.path, thumbSizePx, showNetworkThumbs) {
+    if (showNetworkThumbs) thumbnailRepository.thumbnailKeyForNetworkPath(file.path, thumbSizePx, thumbSizePx)
+    else null
+  }
+  var thumbnail by remember(thumbnailKey) { mutableStateOf<Bitmap?>(null) }
+
+  // Subscribe to ready-keys so folder-level prefetch also updates this card
+  LaunchedEffect(thumbnailKey) {
+    if (thumbnailKey == null) return@LaunchedEffect
+    thumbnailRepository.thumbnailReadyKeys
+      .collect { key ->
+        if (key == thumbnailKey) {
+          thumbnail = withContext(Dispatchers.IO) {
+            thumbnailRepository.getThumbnailForNetworkPath(file.path, thumbSizePx, thumbSizePx)
+          }
+        }
+      }
+  }
+
+  // On-demand generation
+  LaunchedEffect(thumbnailKey, showNetworkThumbs) {
+    if (thumbnailKey == null || !showNetworkThumbs) return@LaunchedEffect
+    if (thumbnail != null) return@LaunchedEffect
+    thumbnail = withContext(Dispatchers.IO) {
+      thumbnailRepository.getThumbnailForNetworkPath(file.path, thumbSizePx, thumbSizePx)
+    }
+  }
 
   Card(
     modifier =
@@ -80,7 +126,7 @@ fun NetworkVideoCard(
           .padding(16.dp),
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      // Square thumbnail matching folder icon size
+      // Square thumbnail
       Box(
         modifier =
           Modifier
@@ -93,13 +139,21 @@ fun NetworkVideoCard(
             ),
         contentAlignment = Alignment.Center,
       ) {
-        // Play icon overlay
-        Icon(
-          Icons.Filled.PlayArrow,
-          contentDescription = "Play",
-          modifier = Modifier.size(48.dp),
-          tint = MaterialTheme.colorScheme.secondary,
-        )
+        if (thumbnail != null) {
+          Image(
+            bitmap = thumbnail!!.asImageBitmap(),
+            contentDescription = "Thumbnail",
+            modifier = Modifier.matchParentSize(),
+            contentScale = ContentScale.Crop,
+          )
+        } else {
+          Icon(
+            Icons.Filled.PlayArrow,
+            contentDescription = "Play",
+            modifier = Modifier.size(48.dp),
+            tint = MaterialTheme.colorScheme.secondary,
+          )
+        }
       }
       Spacer(modifier = Modifier.width(16.dp))
       Column(

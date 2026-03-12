@@ -9,17 +9,21 @@ private fun hdrScreenOutputSettings(
   val hdrEnabled = enabled && pipelineReady
 
   return listOf(
-    "target-colorspace-hint-mode" to "target",
-    "target-colorspace-hint-strict" to "yes",
     "target-colorspace-hint" to if (hdrEnabled) "yes" else "no",
+    "tone-mapping-visualize" to "no",
     "target-trc" to "auto",
     "target-prim" to "auto",
-    "target-peak" to if (hdrEnabled) "1000" else "auto",
-    "hdr-reference-white" to "203",
-    "hdr-compute-peak" to "auto",
-    "gamut-mapping-mode" to if (hdrEnabled) "clip" else "auto",
-    "inverse-tone-mapping" to "no",
+    "target-peak" to "auto",
+    "inverse-tone-mapping" to if (hdrEnabled) "yes" else "no",
     "tone-mapping" to if (hdrEnabled) "clip" else "auto",
+    "gamut-mapping-mode" to if (hdrEnabled) "clip" else "auto",
+    "hdr-compute-peak" to if (hdrEnabled) "yes" else "auto",
+    "hdr-reference-white" to "203",
+    // [HDR-High-Quality] profile: reset video eq for accurate HDR colours
+    "gamma" to if (hdrEnabled) "0" else "0",
+    "contrast" to if (hdrEnabled) "0" else "0",
+    "saturation" to if (hdrEnabled) "0" else "0",
+    "brightness" to if (hdrEnabled) "0" else "0",
   )
 }
 

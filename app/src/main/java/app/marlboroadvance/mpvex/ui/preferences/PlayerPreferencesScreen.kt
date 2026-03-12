@@ -28,6 +28,9 @@ import app.marlboroadvance.mpvex.ui.player.PlayerOrientation
 import app.marlboroadvance.mpvex.ui.player.controls.components.sheets.toFixed
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
 import kotlinx.serialization.Serializable
+import app.marlboroadvance.mpvex.ui.player.ControlsAnimationStyle
+import app.marlboroadvance.mpvex.ui.player.NavigationAnimStyle
+import app.marlboroadvance.mpvex.ui.player.VideoOpenAnimation
 import me.zhanghai.compose.preference.ListPreference
 import me.zhanghai.compose.preference.ProvidePreferenceLocals
 import me.zhanghai.compose.preference.SliderPreference
@@ -430,11 +433,97 @@ object PlayerPreferencesScreen : Screen {
               )
             }
           }
+
+          // ── Animations Section ────────────────────────────────────────────
+          item {
+            PreferenceSectionHeader(title = "Animations")
+          }
+
+          item {
+            PreferenceCard {
+              // Controls animation style
+              val controlsAnimStyle by preferences.controlsAnimStyle.collectAsState()
+              ListPreference(
+                value = controlsAnimStyle,
+                onValueChange = preferences.controlsAnimStyle::set,
+                values = ControlsAnimationStyle.entries,
+                valueToText = { AnnotatedString(it.displayName) },
+                title = { Text("Controls animation style") },
+                summary = {
+                  Text(
+                    text = controlsAnimStyle.displayName,
+                    color = MaterialTheme.colorScheme.outline,
+                  )
+                },
+              )
+
+              PreferenceDivider()
+
+              // Video open animation
+              val videoOpenAnim by preferences.videoOpenAnimation.collectAsState()
+              ListPreference(
+                value = videoOpenAnim,
+                onValueChange = preferences.videoOpenAnimation::set,
+                values = VideoOpenAnimation.entries,
+                valueToText = { AnnotatedString(it.displayName) },
+                title = { Text("Video opening animation") },
+                summary = {
+                  Text(
+                    text = videoOpenAnim.displayName,
+                    color = MaterialTheme.colorScheme.outline,
+                  )
+                },
+              )
+
+              PreferenceDivider()
+
+              // Navigation animation style
+              val navAnimStyle by preferences.navAnimStyle.collectAsState()
+              ListPreference(
+                value = navAnimStyle,
+                onValueChange = preferences.navAnimStyle::set,
+                values = NavigationAnimStyle.entries,
+                valueToText = { AnnotatedString(it.displayName) },
+                title = { Text("Tab navigation style") },
+                summary = {
+                  Text(
+                    text = navAnimStyle.displayName,
+                    color = MaterialTheme.colorScheme.outline,
+                  )
+                },
+              )
+
+              PreferenceDivider()
+
+              // Animation speed
+              val animSpeed by preferences.animationSpeed.collectAsState()
+              SliderPreference(
+                value = animSpeed,
+                onValueChange = { preferences.animationSpeed.set(it) },
+                title = { Text("Animation speed") },
+                valueRange = 0.25f..2.5f,
+                summary = {
+                  val label = when {
+                    animSpeed < 0.6f -> "Very fast  (${animSpeed.toFixed1()}×)"
+                    animSpeed < 0.9f -> "Fast  (${animSpeed.toFixed1()}×)"
+                    animSpeed < 1.1f -> "Normal  (${animSpeed.toFixed1()}×)"
+                    animSpeed < 1.6f -> "Slow  (${animSpeed.toFixed1()}×)"
+                    else             -> "Very slow  (${animSpeed.toFixed1()}×)"
+                  }
+                  Text(label, color = MaterialTheme.colorScheme.outline)
+                },
+                onSliderValueChange = { preferences.animationSpeed.set(it) },
+                sliderValue = animSpeed,
+              )
+            }
+          }
         }
       }
     }
   }
 }
+
+private fun Float.toFixed1(): String = "%.1f".format(this)
 
 
 

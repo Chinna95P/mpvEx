@@ -6,15 +6,24 @@ import app.marlboroadvance.mpvex.ui.icons.Icons
 import android.annotation.SuppressLint
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import app.marlboroadvance.mpvex.preferences.PlayerPreferences
+import app.marlboroadvance.mpvex.preferences.preference.collectAsState
+import app.marlboroadvance.mpvex.ui.player.NavigationAnimStyle
+import org.koin.compose.koinInject
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -119,6 +128,9 @@ object MainScreen : Screen {
 
     val context = LocalContext.current
     val density = LocalDensity.current
+    val playerPreferences = koinInject<PlayerPreferences>()
+    val navAnimStyle by playerPreferences.navAnimStyle.collectAsState()
+    val animSpeed    by playerPreferences.animationSpeed.collectAsState()
 
     // Shared state (across the app)
     val isInSelectionMode = remember { mutableStateOf(isInSelectionModeShared) }
@@ -219,61 +231,12 @@ object MainScreen : Screen {
         AnimatedContent(
           targetState = selectedTab,
           transitionSpec = {
-            // Material 3 Expressive slide-in-fade animation (like Google Phone app)
-            val slideDistance = with(density) { 48.dp.roundToPx() }
-            val animationDuration = 250
-            
-            if (targetState > initialState) {
-              // Moving forward: slide in from right with fade
-              (slideInHorizontally(
-                animationSpec = tween(
-                  durationMillis = animationDuration,
-                  easing = FastOutSlowInEasing
-                ),
-                initialOffsetX = { slideDistance }
-              ) + fadeIn(
-                animationSpec = tween(
-                  durationMillis = animationDuration,
-                  easing = FastOutSlowInEasing
-                )
-              )) togetherWith (slideOutHorizontally(
-                animationSpec = tween(
-                  durationMillis = animationDuration,
-                  easing = FastOutSlowInEasing
-                ),
-                targetOffsetX = { -slideDistance }
-              ) + fadeOut(
-                animationSpec = tween(
-                  durationMillis = animationDuration / 2,
-                  easing = FastOutSlowInEasing
-                )
-              ))
-            } else {
-              // Moving backward: slide in from left with fade
-              (slideInHorizontally(
-                animationSpec = tween(
-                  durationMillis = animationDuration,
-                  easing = FastOutSlowInEasing
-                ),
-                initialOffsetX = { -slideDistance }
-              ) + fadeIn(
-                animationSpec = tween(
-                  durationMillis = animationDuration,
-                  easing = FastOutSlowInEasing
-                )
-              )) togetherWith (slideOutHorizontally(
-                animationSpec = tween(
-                  durationMillis = animationDuration,
-                  easing = FastOutSlowInEasing
-                ),
-                targetOffsetX = { slideDistance }
-              ) + fadeOut(
-                animationSpec = tween(
-                  durationMillis = animationDuration / 2,
-                  easing = FastOutSlowInEasing
-                )
-              ))
-            }
+            buildNavTransition(
+              forward = targetState > initialState,
+              style   = navAnimStyle,
+              speed   = animSpeed,
+              density = density,
+            )
           },
           label = "tab_animation"
         ) { targetTab ->
@@ -295,5 +258,58 @@ object MainScreen : Screen {
 
 // CompositionLocal for navigation bar height
 val LocalNavigationBarHeight = compositionLocalOf { 0.dp }
+
+/** Builds the [ContentTransform] for tab navigation based on the selected style. */
+fun buildNavTransition(
+  forward: Boolean,
+  style: NavigationAnimStyle,
+  speed: Float,
+  density: androidx.compose.ui.unit.Density,
+): ContentTransform {
+  val dir  = if (forward) 1 else -1
+  val dur  = (250 * speed).toInt().coerceAtLeast(60)
+  val half = (dur / 2).coerceAtLeast(30)
+
+  return when (style) {
+    NavigationAnimStyle.None ->
+      (fadeIn(tween(1)) togetherWith fadeOut(tween(1)))
+
+    NavigationAnimStyle.Minimal ->
+      (fadeIn(tween(dur)) togetherWith fadeOut(tween(half)))
+
+    NavigationAnimStyle.FlipFade ->
+      (scaleIn(tween(dur), initialScale = 0.94f) + fadeIn(tween(dur))) togetherWith
+        (scaleOut(tween(half), targetScale = 1.06f) + fadeOut(tween(half)))
+
+    NavigationAnimStyle.Depth ->
+      // New screen slides in fully; old screen scales back slightly (parallax)
+      (slideInHorizontally(tween(dur, easing = FastOutSlowInEasing)) { it * dir } +
+        fadeIn(tween(dur))) togetherWith
+        (slideOutHorizontally(tween(half, easing = FastOutSlowInEasing)) { (-it * 0.25f * dir).toInt() } +
+          scaleOut(tween(half), targetScale = 0.92f) +
+          fadeOut(tween(half)))
+
+    NavigationAnimStyle.Elastic ->
+      (slideInHorizontally(
+        spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = 380f),
+      ) { it * dir } + fadeIn(tween(80))) togetherWith
+        (slideOutHorizontally(tween(half)) { (-it / 3 * dir) } + fadeOut(tween(half)))
+
+    NavigationAnimStyle.Default -> {
+      val slidePx = with(density) { 48.dp.roundToPx() }
+      if (forward) {
+        (slideInHorizontally(tween(dur, easing = FastOutSlowInEasing)) { slidePx } +
+          fadeIn(tween(dur, easing = FastOutSlowInEasing))) togetherWith
+          (slideOutHorizontally(tween(dur, easing = FastOutSlowInEasing)) { -slidePx } +
+            fadeOut(tween(half, easing = FastOutSlowInEasing)))
+      } else {
+        (slideInHorizontally(tween(dur, easing = FastOutSlowInEasing)) { -slidePx } +
+          fadeIn(tween(dur, easing = FastOutSlowInEasing))) togetherWith
+          (slideOutHorizontally(tween(dur, easing = FastOutSlowInEasing)) { slidePx } +
+            fadeOut(tween(half, easing = FastOutSlowInEasing)))
+      }
+    }
+  }
+}
 
 

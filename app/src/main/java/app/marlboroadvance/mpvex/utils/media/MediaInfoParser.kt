@@ -33,6 +33,9 @@ data class ParsedMediaInfo(
 
 object MediaInfoParser {
 
+    // ── Result cache — avoids re-parsing the same filename (e.g. playlist repeat) ──
+    private val parseCache = android.util.LruCache<String, ParsedMediaInfo>(300)
+
     // ── Japanese season numbers ──────────────────────────────────────────────────
     private val JAPANESE_NUMBERS = mapOf(
         "ichi" to 1, "ni" to 2, "san" to 3, "yon" to 4, "shi" to 4,
@@ -110,6 +113,14 @@ object MediaInfoParser {
                 SCENE_TAGS + LANGUAGE_TAGS + MISC_NOISE + FILE_EXTENSIONS)
     }
 
+    // Pre-compiled per-tag regexes — built once, reused on every parse
+    private val ALL_NOISE_REGEXES: List<Regex> by lazy {
+        ALL_NOISE.map { tag -> Regex("""\b${Regex.escape(tag)}\b""", RegexOption.IGNORE_CASE) }
+    }
+    private val RELEASE_GROUP_REGEXES: List<Regex> by lazy {
+        RELEASE_GROUPS.map { g -> Regex("""\b${Regex.escape(g)}\b""", RegexOption.IGNORE_CASE) }
+    }
+
     // ── Regex patterns ───────────────────────────────────────────────────────────
 
     // Season-Episode: S01E02, S1E2, s01e02 — also captures multi-episode S01E01E02
@@ -163,6 +174,9 @@ object MediaInfoParser {
         if (fileName.isBlank()) {
             return ParsedMediaInfo(title = "", type = "movie")
         }
+
+        // Return cached result if available
+        parseCache.get(fileName)?.let { return it }
 
         // Step 1: Extract S01E02 / 1x02 patterns before any modification
         val seMatch = SEASON_EPISODE_REGEX.find(fileName)
@@ -291,7 +305,7 @@ object MediaInfoParser {
             else -> "movie"
         }
 
-        return ParsedMediaInfo(
+        val result = ParsedMediaInfo(
             title = cleanTitle,
             year = year,
             season = season,
@@ -299,6 +313,8 @@ object MediaInfoParser {
             episodeTitle = episodeTitle,
             type = type
         )
+        parseCache.put(fileName, result)
+        return result
     }
 
     // ── Helper: Find year without matching inside episode patterns ────────────────
@@ -446,9 +462,9 @@ object MediaInfoParser {
             // Remove compound audio tags (DTS-HD MA, TrueHD, DD+, DDP)
             .replace(COMPOUND_AUDIO_REGEX, " ")
 
-        // Remove all noise tags (with word boundaries)
-        ALL_NOISE.forEach { tag ->
-            title = title.replace(Regex("""\b${Regex.escape(tag)}\b""", RegexOption.IGNORE_CASE), " ")
+        // Remove all noise tags using pre-compiled regexes
+        ALL_NOISE_REGEXES.forEach { regex ->
+            title = title.replace(regex, " ")
         }
 
         // Remove S01E02 patterns from title
@@ -466,9 +482,9 @@ object MediaInfoParser {
         // Remove season word patterns
         title = title.replace(SEASON_WORD_REGEX, " ")
 
-        // Remove release groups
-        RELEASE_GROUPS.forEach { group ->
-            title = title.replace(Regex("""\b${Regex.escape(group)}\b""", RegexOption.IGNORE_CASE), " ")
+        // Remove release groups using pre-compiled regexes
+        RELEASE_GROUP_REGEXES.forEach { regex ->
+            title = title.replace(regex, " ")
         }
 
         // Remove trailing group after dash (e.g., "-PSA", "-DEMAND")

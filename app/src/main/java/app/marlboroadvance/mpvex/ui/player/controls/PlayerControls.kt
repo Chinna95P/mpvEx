@@ -9,10 +9,14 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -30,8 +34,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -90,6 +96,7 @@ import app.marlboroadvance.mpvex.preferences.preference.collectAsState
 import app.marlboroadvance.mpvex.preferences.preference.deleteAndGet
 import app.marlboroadvance.mpvex.preferences.preference.plusAssign
 import app.marlboroadvance.mpvex.preferences.preference.minusAssign
+import app.marlboroadvance.mpvex.ui.player.ControlsAnimationStyle
 import app.marlboroadvance.mpvex.ui.player.Decoder.Companion.getDecoderFromValue
 import app.marlboroadvance.mpvex.ui.player.Panels
 import app.marlboroadvance.mpvex.ui.player.PlayerActivity
@@ -97,6 +104,12 @@ import app.marlboroadvance.mpvex.ui.player.PlayerUpdates
 import app.marlboroadvance.mpvex.ui.player.PlayerViewModel
 import app.marlboroadvance.mpvex.ui.player.Sheets
 import app.marlboroadvance.mpvex.ui.player.VideoAspect
+import app.marlboroadvance.mpvex.ui.player.VideoOpenAnimation
+import app.marlboroadvance.mpvex.ui.player.VideoOpenAnimationOverlay
+import app.marlboroadvance.mpvex.ui.player.buildControlsEnterH
+import app.marlboroadvance.mpvex.ui.player.buildControlsEnterV
+import app.marlboroadvance.mpvex.ui.player.buildControlsExitH
+import app.marlboroadvance.mpvex.ui.player.buildControlsExitV
 import app.marlboroadvance.mpvex.ui.player.controls.components.BrightnessSlider
 import app.marlboroadvance.mpvex.ui.player.controls.components.CompactSpeedIndicator
 import app.marlboroadvance.mpvex.ui.player.controls.components.ControlsButton
@@ -165,12 +178,13 @@ fun PlayerControls(
   val precisePosition by viewModel.precisePosition.collectAsState()
   val preciseDuration by viewModel.preciseDuration.collectAsState()
   val playbackSpeed by MPVLib.propFloat["speed"].collectAsState()
-  val doubleTapSeekAmount by viewModel.doubleTapSeekAmount.collectAsState()
+  val seekState by viewModel.seekState.collectAsState()
+  val doubleTapSeekAmount = seekState.amount
   val showDoubleTapOvals by playerPreferences.showDoubleTapOvals.collectAsState()
   val showSeekTime by playerPreferences.showSeekTimeWhileSeeking.collectAsState()
   var isSeeking by remember { mutableStateOf(false) }
   var resetControlsTimestamp by remember { mutableStateOf(0L) }
-  val seekText by viewModel.seekText.collectAsState()
+  val seekText = seekState.text
   val currentChapter by MPVLib.propInt["chapter"].collectAsState()
   val mpvDecoder by MPVLib.propString["hwdec-current"].collectAsState()
   val decoder by remember { derivedStateOf { getDecoderFromValue(mpvDecoder ?: "auto") } }
@@ -184,8 +198,9 @@ fun PlayerControls(
 
     val customButtons by viewModel.customButtons.collectAsState()
     
-  val abLoopA by viewModel.abLoopA.collectAsState()
-  val abLoopB by viewModel.abLoopB.collectAsState()
+  val abLoop by viewModel.abLoopState.collectAsState()
+  val abLoopA = abLoop.a
+  val abLoopB = abLoop.b
 
   val onOpenSheet: (Sheets) -> Unit = {
     viewModel.sheetShown.update { _ -> it }
@@ -247,6 +262,9 @@ fun PlayerControls(
     }
   }
 
+  val videoOpenAnim by playerPreferences.videoOpenAnimation.collectAsState()
+  val animSpeed by playerPreferences.animationSpeed.collectAsState()
+
   val transparentOverlay by animateFloatAsState(
     if (controlsShown && !areControlsLocked) .8f else 0f,
     animationSpec = playerControlsExitAnimationSpec(),
@@ -304,6 +322,9 @@ fun PlayerControls(
         val mpvVolume by MPVLib.propInt["volume"].collectAsState()
         val swapVolumeAndBrightness by playerPreferences.swapVolumeAndBrightness.collectAsState()
         val reduceMotion by playerPreferences.reduceMotion.collectAsState()
+        val controlsAnimStyle by playerPreferences.controlsAnimStyle.collectAsState()
+        val enterMs = (100 * animSpeed).toInt().coerceAtLeast(30)
+        val exitMs  = (300 * animSpeed).toInt().coerceAtLeast(50)
 
         val activity = LocalActivity.current as PlayerActivity
         val aspect by viewModel.videoAspect.collectAsState()
@@ -342,22 +363,12 @@ fun PlayerControls(
 
         AnimatedVisibility(
           isBrightnessSliderShown,
-          enter =
-            if (!reduceMotion) {
-              slideInHorizontally(playerControlsEnterAnimationSpec()) {
-                if (swapVolumeAndBrightness) -it else it
-              } + fadeIn(playerControlsEnterAnimationSpec())
-            } else {
-              fadeIn(playerControlsEnterAnimationSpec())
-            },
-          exit =
-            if (!reduceMotion) {
-              slideOutHorizontally(playerControlsExitAnimationSpec()) {
-                if (swapVolumeAndBrightness) -it else it
-              } + fadeOut(playerControlsExitAnimationSpec())
-            } else {
-              fadeOut(playerControlsExitAnimationSpec())
-            },
+          enter = buildControlsEnterH(
+            controlsAnimStyle, reduceMotion, enterMs,
+          ) { if (swapVolumeAndBrightness) -it else it },
+          exit = buildControlsExitH(
+            controlsAnimStyle, reduceMotion, exitMs,
+          ) { if (swapVolumeAndBrightness) -it else it },
           modifier =
             Modifier.constrainAs(brightnessSlider) {
               if (swapVolumeAndBrightness) {
@@ -372,22 +383,12 @@ fun PlayerControls(
 
         AnimatedVisibility(
           isVolumeSliderShown,
-          enter =
-            if (!reduceMotion) {
-              slideInHorizontally(playerControlsEnterAnimationSpec()) {
-                if (swapVolumeAndBrightness) it else -it
-              } + fadeIn(playerControlsEnterAnimationSpec())
-            } else {
-              fadeIn(playerControlsEnterAnimationSpec())
-            },
-          exit =
-            if (!reduceMotion) {
-              slideOutHorizontally(playerControlsExitAnimationSpec()) {
-                if (swapVolumeAndBrightness) it else -it
-              } + fadeOut(playerControlsExitAnimationSpec())
-            } else {
-              fadeOut(playerControlsExitAnimationSpec())
-            },
+          enter = buildControlsEnterH(
+            controlsAnimStyle, reduceMotion, enterMs,
+          ) { if (swapVolumeAndBrightness) it else -it },
+          exit = buildControlsExitH(
+            controlsAnimStyle, reduceMotion, exitMs,
+          ) { if (swapVolumeAndBrightness) it else -it },
           modifier =
             Modifier.constrainAs(volumeSlider) {
               if (swapVolumeAndBrightness) {
@@ -1015,20 +1016,8 @@ fun PlayerControls(
 
         AnimatedVisibility(
           visible = controlsShown && !areControlsLocked,
-          enter =
-            if (!reduceMotion) {
-              slideInVertically(playerControlsEnterAnimationSpec()) { it } +
-                fadeIn(playerControlsEnterAnimationSpec())
-            } else {
-              fadeIn(playerControlsEnterAnimationSpec())
-            },
-          exit =
-            if (!reduceMotion) {
-              slideOutVertically(playerControlsExitAnimationSpec()) { it } +
-                fadeOut(playerControlsExitAnimationSpec())
-            } else {
-              fadeOut(playerControlsExitAnimationSpec())
-            },
+          enter = buildControlsEnterV(controlsAnimStyle, reduceMotion, enterMs) { it },
+          exit  = buildControlsExitV(controlsAnimStyle, reduceMotion, exitMs) { it },
           modifier =
             Modifier
               .then(
@@ -1085,20 +1074,8 @@ fun PlayerControls(
 
         AnimatedVisibility(
           visible = controlsShown && !areControlsLocked,
-          enter =
-            if (!reduceMotion) {
-              slideInHorizontally(playerControlsEnterAnimationSpec()) { -it } +
-                fadeIn(playerControlsEnterAnimationSpec())
-            } else {
-              fadeIn(playerControlsEnterAnimationSpec())
-            },
-          exit =
-            if (!reduceMotion) {
-              slideOutHorizontally(playerControlsExitAnimationSpec()) { -it } +
-                fadeOut(playerControlsExitAnimationSpec())
-            } else {
-              fadeOut(playerControlsExitAnimationSpec())
-            },
+          enter = buildControlsEnterH(controlsAnimStyle, reduceMotion, enterMs) { -it },
+          exit  = buildControlsExitH(controlsAnimStyle, reduceMotion, exitMs) { -it },
           modifier =
             Modifier
               .then(
@@ -1152,20 +1129,8 @@ fun PlayerControls(
 
         AnimatedVisibility(
           visible = controlsShown && !areControlsLocked && !isPortrait,
-          enter =
-            if (!reduceMotion) {
-              slideInHorizontally(playerControlsEnterAnimationSpec()) { it } +
-                fadeIn(playerControlsEnterAnimationSpec())
-            } else {
-              fadeIn(playerControlsEnterAnimationSpec())
-            },
-          exit =
-            if (!reduceMotion) {
-              slideOutHorizontally(playerControlsExitAnimationSpec()) { it } +
-                fadeOut(playerControlsExitAnimationSpec())
-            } else {
-              fadeOut(playerControlsExitAnimationSpec())
-            },
+          enter = buildControlsEnterH(controlsAnimStyle, reduceMotion, enterMs) { it },
+          exit  = buildControlsExitH(controlsAnimStyle, reduceMotion, exitMs) { it },
           modifier =
             Modifier
               .then(
@@ -1212,20 +1177,8 @@ fun PlayerControls(
 
         AnimatedVisibility(
           visible = controlsShown && !areControlsLocked && !areSlidersShown,
-          enter =
-            if (!reduceMotion) {
-              slideInHorizontally(playerControlsEnterAnimationSpec()) { it } +
-                fadeIn(playerControlsEnterAnimationSpec())
-            } else {
-              fadeIn(playerControlsEnterAnimationSpec())
-            },
-          exit =
-            if (!reduceMotion) {
-              slideOutHorizontally(playerControlsExitAnimationSpec()) { it } +
-                fadeOut(playerControlsExitAnimationSpec())
-            } else {
-              fadeOut(playerControlsExitAnimationSpec())
-            },
+          enter = buildControlsEnterH(controlsAnimStyle, reduceMotion, enterMs) { it },
+          exit  = buildControlsExitH(controlsAnimStyle, reduceMotion, exitMs) { it },
           modifier =
             Modifier
               .then(
@@ -1292,20 +1245,8 @@ fun PlayerControls(
 
         AnimatedVisibility(
           visible = controlsShown && !areControlsLocked && !isPortrait && !areSlidersShown,
-          enter =
-            if (!reduceMotion) {
-              slideInHorizontally(playerControlsEnterAnimationSpec()) { -it } +
-                fadeIn(playerControlsEnterAnimationSpec())
-            } else {
-              fadeIn(playerControlsEnterAnimationSpec())
-            },
-          exit =
-            if (!reduceMotion) {
-              slideOutHorizontally(playerControlsExitAnimationSpec()) { -it } +
-                fadeOut(playerControlsExitAnimationSpec())
-            } else {
-              fadeOut(playerControlsExitAnimationSpec())
-            },
+          enter = buildControlsEnterH(controlsAnimStyle, reduceMotion, enterMs) { -it },
+          exit  = buildControlsExitH(controlsAnimStyle, reduceMotion, exitMs) { -it },
           modifier =
             Modifier
               .then(
@@ -1347,6 +1288,9 @@ fun PlayerControls(
 
       }
     }
+
+    // ── Video open animation overlay ────────────────────────────────────────
+    VideoOpenAnimationOverlay(videoOpenAnim, animSpeed)
 
     val sheetShown by viewModel.sheetShown.collectAsState()
     val subtitles by viewModel.subtitleTracks.collectAsState(persistentListOf())

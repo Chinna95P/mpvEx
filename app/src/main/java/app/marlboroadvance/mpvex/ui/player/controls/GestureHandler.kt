@@ -94,8 +94,9 @@ fun GestureHandler(
   val playbackSpeed by MPVLib.propFloat["speed"].collectAsState()
   val controlsShown by viewModel.controlsShown.collectAsState()
   val areControlsLocked by viewModel.areControlsLocked.collectAsState()
-  val seekAmount by viewModel.doubleTapSeekAmount.collectAsState()
-  val isSeekingForwards by viewModel.isSeekingForwards.collectAsState()
+  val seekState by viewModel.seekState.collectAsState()
+  val seekAmount = seekState.amount
+  val isSeekingForwards = seekState.isForwards
   val useSingleTapForCenter by gesturePreferences.useSingleTapForCenter.collectAsState()
   val doubleTapSeekAreaWidth by gesturePreferences.doubleTapSeekAreaWidth.collectAsState()
   val centerVerticalSubtitlePositionGesture by gesturePreferences.centerVerticalSubtitlePositionGesture.collectAsState()
@@ -189,7 +190,6 @@ fun GestureHandler(
   Box(
     modifier = modifier
       .fillMaxSize()
-      .padding(horizontal = 48.dp, vertical = 48.dp)
       .pointerInput(areControlsLocked, doubleTapSeekAreaWidth, gesturePreferences, isVerticalGestureActive) {
         // Isolated double-tap detection that doesn't interfere with other gestures
         if (isVerticalGestureActive) return@pointerInput

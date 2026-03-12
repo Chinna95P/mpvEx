@@ -254,15 +254,10 @@ class PlayerViewModel(
   val sheetShown = MutableStateFlow(Sheets.None)
   val panelShown = MutableStateFlow(Panels.None)
 
-  // Seek state
-  private val _seekText = MutableStateFlow<String?>(null)
-  val seekText: StateFlow<String?> = _seekText.asStateFlow()
-
-  private val _doubleTapSeekAmount = MutableStateFlow(0)
-  val doubleTapSeekAmount: StateFlow<Int> = _doubleTapSeekAmount.asStateFlow()
-
-  private val _isSeekingForwards = MutableStateFlow(false)
-  val isSeekingForwards: StateFlow<Boolean> = _isSeekingForwards.asStateFlow()
+  // Seek state — combined to allow atomic updates and reduce flow count
+  data class SeekState(val text: String? = null, val amount: Int = 0, val isForwards: Boolean = false)
+  private val _seekState = MutableStateFlow(SeekState())
+  val seekState: StateFlow<SeekState> = _seekState.asStateFlow()
 
   // Frame navigation
   private val _currentFrame = MutableStateFlow(0)
@@ -312,23 +307,15 @@ class PlayerViewModel(
   private val _shuffleEnabled = MutableStateFlow(false)
   val shuffleEnabled: StateFlow<Boolean> = _shuffleEnabled.asStateFlow()
 
-  // A-B Loop state
-  private val _abLoopA = MutableStateFlow<Double?>(null)
-  val abLoopA: StateFlow<Double?> = _abLoopA.asStateFlow()
+  // A-B Loop state — combined for atomic updates
+  data class ABLoopState(val a: Double? = null, val b: Double? = null, val isExpanded: Boolean = false)
+  private val _abLoopState = MutableStateFlow(ABLoopState())
+  val abLoopState: StateFlow<ABLoopState> = _abLoopState.asStateFlow()
 
-  private val _abLoopB = MutableStateFlow<Double?>(null)
-  val abLoopB: StateFlow<Double?> = _abLoopB.asStateFlow()
-
-  private val _isABLoopExpanded = MutableStateFlow(false)
-  val isABLoopExpanded: StateFlow<Boolean> = _isABLoopExpanded.asStateFlow()
-
-  // Mirroring state
-  private val _isMirrored = MutableStateFlow(false)
-  val isMirrored: StateFlow<Boolean> = _isMirrored.asStateFlow()
-
-  // Vertical flip state
-  private val _isVerticalFlipped = MutableStateFlow(false)
-  val isVerticalFlipped: StateFlow<Boolean> = _isVerticalFlipped.asStateFlow()
+  // Transform state (mirror + flip) — combined, saves 1 StateFlow object
+  data class TransformState(val isMirrored: Boolean = false, val isVerticalFlipped: Boolean = false)
+  private val _transformState = MutableStateFlow(TransformState())
+  val transformState: StateFlow<TransformState> = _transformState.asStateFlow()
 
   private val _isHdrScreenOutputEnabled = MutableStateFlow(isHdrScreenOutputAvailable() && decoderPreferences.hdrScreenOutput.get())
   val isHdrScreenOutputEnabled: StateFlow<Boolean> = _isHdrScreenOutputEnabled.asStateFlow()
@@ -412,19 +399,12 @@ class PlayerViewModel(
 
     // Monitor duration and AB loop changes to automatically enable precise seeking
     viewModelScope.launch {
-      combine(
-        MPVLib.propInt["duration"],
-        abLoopA,
-        abLoopB
-      ) { duration, loopA, loopB ->
-        Triple(duration, loopA, loopB)
-      }.collect { (duration, loopA, loopB) ->
+      combine(MPVLib.propInt["duration"], abLoopState) { duration, abLoop ->
+        Pair(duration, abLoop)
+      }.collect { (duration, abLoop) ->
         val videoDuration = duration ?: 0
-        // Use precise seeking for videos shorter than 2 minutes, or if AB loop is active, or if preference is enabled
-        val isLoopActive = loopA != null || loopB != null
+        val isLoopActive = abLoop.a != null || abLoop.b != null
         val shouldUsePreciseSeeking = playerPreferences.usePreciseSeeking.get() || videoDuration < 120 || isLoopActive
-        
-        // Update hr-seek settings dynamically
         MPVLib.setPropertyString("hr-seek", if (shouldUsePreciseSeeking) "yes" else "no")
         MPVLib.setPropertyString("hr-seek-framedrop", if (shouldUsePreciseSeeking) "no" else "yes")
       }
@@ -1170,8 +1150,8 @@ class PlayerViewModel(
       var clampedPosition = position.coerceIn(0, maxDuration)
 
       // Clamp within AB loop if active
-      val loopA = _abLoopA.value
-      val loopB = _abLoopB.value
+      val loopA = _abLoopState.value.a
+      val loopB = _abLoopState.value.b
       if (loopA != null && loopB != null) {
         val min = minOf(loopA.toInt(), loopB.toInt())
         val max = maxOf(loopA.toInt(), loopB.toInt())
@@ -1218,31 +1198,29 @@ class PlayerViewModel(
   }
 
   fun leftSeek() {
-    if ((pos ?: 0) > 0) {
-      _doubleTapSeekAmount.value -= doubleTapToSeekDuration
+    _seekState.update { s ->
+      s.copy(amount = if ((pos ?: 0) > 0) s.amount - doubleTapToSeekDuration else s.amount, isForwards = false)
     }
-    _isSeekingForwards.value = false
     seekBy(-doubleTapToSeekDuration)
   }
 
   fun rightSeek() {
-    if ((pos ?: 0) < (duration ?: 0)) {
-      _doubleTapSeekAmount.value += doubleTapToSeekDuration
+    _seekState.update { s ->
+      s.copy(amount = if ((pos ?: 0) < (duration ?: 0)) s.amount + doubleTapToSeekDuration else s.amount, isForwards = true)
     }
-    _isSeekingForwards.value = true
     seekBy(doubleTapToSeekDuration)
   }
 
   fun updateSeekAmount(amount: Int) {
-    _doubleTapSeekAmount.value = amount
+    _seekState.update { it.copy(amount = amount) }
   }
 
   fun updateSeekText(text: String?) {
-    _seekText.value = text
+    _seekState.update { it.copy(text = text) }
   }
 
   fun updateIsSeekingForwards(isForwards: Boolean) {
-    _isSeekingForwards.value = isForwards
+    _seekState.update { it.copy(isForwards = isForwards) }
   }
 
   private fun seekToWithText(
@@ -1250,9 +1228,7 @@ class PlayerViewModel(
     text: String?,
   ) {
     val currentPos = pos ?: return
-    _isSeekingForwards.value = seekValue > currentPos
-    _doubleTapSeekAmount.value = seekValue - currentPos
-    _seekText.value = text
+    _seekState.value = SeekState(text = text, amount = seekValue - currentPos, isForwards = seekValue > currentPos)
     seekTo(seekValue)
   }
 
@@ -1263,11 +1239,10 @@ class PlayerViewModel(
     val currentPos = pos ?: return
     val maxDuration = duration ?: return
 
-    _doubleTapSeekAmount.update {
-      if ((value < 0 && it < 0) || currentPos + value > maxDuration) 0 else it + value
+    _seekState.update { s ->
+      val newAmount = if ((value < 0 && s.amount < 0) || currentPos + value > maxDuration) 0 else s.amount + value
+      SeekState(text = text, amount = newAmount, isForwards = value > 0)
     }
-    _seekText.value = text
-    _isSeekingForwards.value = value > 0
     seekBy(value)
   }
 
@@ -2212,39 +2187,33 @@ class PlayerViewModel(
   // ==================== A-B Loop ====================
 
   fun toggleABLoopExpanded() {
-    _isABLoopExpanded.update { !it }
+    _abLoopState.update { it.copy(isExpanded = !it.isExpanded) }
   }
 
   fun setLoopA() {
-    if (_abLoopA.value != null) {
-      // Toggle off - clear point A
-      _abLoopA.value = null
+    if (_abLoopState.value.a != null) {
+      _abLoopState.update { it.copy(a = null) }
       MPVLib.setPropertyString("ab-loop-a", "no")
       return
     }
-
     val currentPos = MPVLib.getPropertyDouble("time-pos") ?: return
-    _abLoopA.value = currentPos
+    _abLoopState.update { it.copy(a = currentPos) }
     MPVLib.setPropertyDouble("ab-loop-a", currentPos)
   }
 
   fun setLoopB() {
-    if (_abLoopB.value != null) {
-      // Toggle off - clear point B
-      _abLoopB.value = null
+    if (_abLoopState.value.b != null) {
+      _abLoopState.update { it.copy(b = null) }
       MPVLib.setPropertyString("ab-loop-b", "no")
       return
     }
-
     val currentPos = MPVLib.getPropertyDouble("time-pos") ?: return
-    _abLoopB.value = currentPos
+    _abLoopState.update { it.copy(b = currentPos) }
     MPVLib.setPropertyDouble("ab-loop-b", currentPos)
   }
 
   fun clearABLoop() {
-    val hadLoop = _abLoopA.value != null || _abLoopB.value != null
-    _abLoopA.value = null
-    _abLoopB.value = null
+    _abLoopState.update { it.copy(a = null, b = null) }
     MPVLib.setPropertyString("ab-loop-a", "no")
     MPVLib.setPropertyString("ab-loop-b", "no")
   }
@@ -2260,8 +2229,8 @@ class PlayerViewModel(
   // ==================== Mirroring ====================
 
   fun toggleMirroring() {
-    val newMirrorState = !_isMirrored.value
-    _isMirrored.value = newMirrorState
+    val newMirrorState = !_transformState.value.isMirrored
+    _transformState.update { it.copy(isMirrored = newMirrorState) }
     
     // Use labeled video filter for mirroring to avoid state desync
     if (newMirrorState) {
@@ -2273,8 +2242,8 @@ class PlayerViewModel(
   }
 
   fun toggleVerticalFlip() {
-    val newState = !_isVerticalFlipped.value
-    _isVerticalFlipped.value = newState
+    val newState = !_transformState.value.isVerticalFlipped
+    _transformState.update { it.copy(isVerticalFlipped = newState) }
 
     // Use labeled video filter for vflip to avoid state desync
     if (newState) {

@@ -634,21 +634,22 @@ fun RenderPlayerButton(
     }
 
     PlayerButton.MIRROR -> {
-      val isMirrored by viewModel.isMirrored.collectAsState()
+      val transform by viewModel.transformState.collectAsState()
       ControlsButton(
         icon = Icons.Default.Flip,
         onClick = viewModel::toggleMirroring,
         color = if (hideBackground) {
-          if (isMirrored) MaterialTheme.colorScheme.primary else controlColor
+          if (transform.isMirrored) MaterialTheme.colorScheme.primary else controlColor
         } else {
-          if (isMirrored) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+          if (transform.isMirrored) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
         },
         modifier = Modifier.size(buttonSize),
       )
     }
 
     PlayerButton.VERTICAL_FLIP -> {
-      val isVerticalFlipped by viewModel.isVerticalFlipped.collectAsState()
+      val transform by viewModel.transformState.collectAsState()
+      val isVerticalFlipped = transform.isVerticalFlipped
       val vFlipColor = if (hideBackground) {
         if (isVerticalFlipped) MaterialTheme.colorScheme.primary else controlColor
       } else {
@@ -679,9 +680,10 @@ fun RenderPlayerButton(
     }
 
     PlayerButton.AB_LOOP -> {
-      val isExpanded by viewModel.isABLoopExpanded.collectAsState()
-      val loopA by viewModel.abLoopA.collectAsState()
-      val loopB by viewModel.abLoopB.collectAsState()
+      val abLoop by viewModel.abLoopState.collectAsState()
+      val isExpanded = abLoop.isExpanded
+      val loopA = abLoop.a
+      val loopB = abLoop.b
 
       AnimatedContent(
         targetState = isExpanded,
